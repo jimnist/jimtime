@@ -33,7 +33,7 @@ register_commands! {
     Harvest
 }
 
-// Async by default. For an offline CLI, see "Going sync" in the README.
+// Async for the Harvest API.
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();

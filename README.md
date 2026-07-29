@@ -40,41 +40,63 @@ jimtime harvest tasks --project ID # find a default_task_id assigned to it
 
 ```
 $ jimtime --help
-< TODO: insert help here >
+Track billable time per git repo and push approved entries to Harvest
+
+Commands:
+  status     Show the current repo, its Harvest mapping, and today's store path
+  map        Show the Harvest mapping for the current repo
+  add        Add a time entry for the current repo
+  today      Print today's time log
+  review     Summarize entries over a date range or a single day
+  approve    Approve matching sections (the human gate before pushing)
+  unapprove  Set matching sections back to unapproved
+  harvest    Query Harvest, and dry-run or push approved time entries
 ```
 
-## Async by default
+### The workflow
 
-This project is async: `main` is `#[tokio::main]` and ships with `tokio`,
-`reqwest`, and `serde_json` for network/IO work.
+```sh
+# From the repo you did the work in:
+jimtime add --hours 1.25 --notes "Implemented invoice sync" [--needs-review]
 
-### Going sync
+# Review a day, a range, or a week:
+jimtime review --today
+jimtime review --week
+jimtime review --from 2026-07-22 --to 2026-07-28
 
-If this is an offline CLI that never touches the network, strip async out:
+# Approve (the human gate) — preview, then apply:
+jimtime approve --week
+jimtime approve --week --yes          # also clears needs-review
 
-1. In `Cargo.toml`, remove `tokio`, `reqwest`, `serde_json` (and `async-trait`
-   if present).
-2. In `src/main.rs`, drop the `#[tokio::main]` attribute and make `main`
-   non-`async`: `fn main() -> Result<()>`.
-3. If you have subcommands, in `src/commands/mod.rs` remove
-   `#[async_trait::async_trait]` and make the trait method sync
-   (`fn run(&self) -> Result<()>`); do the same in each command's `impl`, and
-   change `cli.commands.run().await?` back to `cli.commands.run()?`.
+# Push approved, billable, not-yet-imported entries to Harvest:
+jimtime harvest dry-run --week        # preview the exact payload
+jimtime harvest push --week           # creates the entries; idempotent
+```
 
+Ranges are shared across `review`, `approve`, `unapprove`, and `harvest`:
+`--today`, `--week`, `--last-week`, `--date YYYY-MM-DD`, or `--from … --to …`
+(default: today). Approval and push default to billable rows only; pass
+`--include-non-billable` to include the rest.
 
+## The Claude Code skill
 
-## Agent tooling
+The repo ships a user-invoked `/jimtime` skill at `.claude/skills/jimtime/` that
+lets Claude Code drive the workflow: it summarizes your work into a conservative
+entry (`add --needs-review`), helps you `review`, and runs `approve` / `push`
+only on your explicit say-so. It is `disable-model-invocation: true`, so it never
+fires on its own - you invoke it with `/jimtime`.
 
-This repo ships with agent context and skills pre-installed (from the
-[`jimnist/rust-cli-template`](https://github.com/jimnist/rust-cli-template)
-template):
+To use it from any repo, symlink it onto your Claude skills path, e.g.:
 
-- `AGENTS.md` + `docs/agents/` — durable, project-specific context for AI agents.
-- `.claude/skills/` and `.agents/skills/` — the `grill-with-docs` skill (and its
-  deps), plus `setup-matt-pocock-skills`. See `docs/agents/skills.md`.
+```sh
+ln -s "$PWD/.claude/skills/jimtime" ~/.claude/skills/jimtime
+```
 
-Run `/grill-with-docs` before building anything non-trivial, and
-`/setup-matt-pocock-skills` once to wire up issue tracking and doc locations.
+## Agent context
+
+`AGENTS.md` and `docs/agents/` hold durable, project-specific context for AI
+agents; `CONTEXT.md` is the domain glossary and `docs/adr/` the load-bearing
+decisions.
 
 ## Install
 

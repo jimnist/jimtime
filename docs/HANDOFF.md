@@ -1,7 +1,7 @@
 # jimtime - build spec
 
 Personal CLI for tracking billable time per git repo, reviewing/approving it, and pushing approved billable entries to Harvest.
-The design was sharpened in a `/grill-with-docs` session; see `CONTEXT.md` for the glossary and `docs/adr/` for the load-bearing decisions.
+The design was sharpened in a grilling session (interviewing the spec against the Harvest API docs); see `CONTEXT.md` for the glossary and `docs/adr/` for the load-bearing decisions.
 
 ## Model
 

@@ -8,7 +8,7 @@ use crate::selection::FilterArgs;
 use crate::store::Day;
 use crate::view::fmt_hours;
 
-/// Query Harvest (build the mapping now; push time in Phase 3)
+/// Query Harvest, and dry-run or push approved time entries
 #[derive(Args)]
 pub struct Harvest {
     #[command(subcommand)]
