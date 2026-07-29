@@ -21,11 +21,10 @@ The design was sharpened in a grilling session (interviewing the spec against th
       "client_id": 123, "client_name": "Acme",
       "project_id": 234, "project_name": "Billing Portal",
       "task_id": 345, "task_name": "Development",
-      "approved": false,
       "entries": [
         {
           "id": "2026-07-28-acme-billing-portal-development-001",
-          "hours": 1.25, "billable": true, "needs_review": true,
+          "hours": 1.25, "billable": true, "approved": false, "needs_review": true,
           "notes": "Implemented webhook retry handling",
           "harvest_time_entry_id": null
         }
@@ -35,7 +34,7 @@ The design was sharpened in a grilling session (interviewing the spec against th
 }
 ```
 
-A **Section** groups entries by `(repo_path, client, project, task)`. Approval is per Section. Entry IDs are `YYYY-MM-DD-<client>-<project>-<task>-###`, the suffix incrementing within a Section.
+A **Section** groups entries by `(repo_path, client, project, task)` and is a storage/display grouping only. **Approval is per entry** [ADR-0004]. Entry IDs are `YYYY-MM-DD-<client>-<project>-<task>-###`, the suffix incrementing within a Section. (Legacy files carried `approved` on the section; it is migrated onto the entries on load.)
 
 ## Mapping
 
@@ -44,9 +43,10 @@ A **Section** groups entries by `(repo_path, client, project, task)`. Approval i
 ## Rules
 
 - **Billing:** store exact hours; no rounding on push.
-- **Review/approve** operate over a date range *or* a single day.
+- **Review/approve** operate over a date range *or* a single day (`--today`/`--week`/`--last-week`/`--date`/`--from`+`--to`).
+- **Approval** is per entry [ADR-0004]. `approve` sweeps every unapproved entry in scope except `needs-review` ones (held) and `--except <id>`; `--include-needs-review` sweeps those too. `review --pending` lists what's outstanding first.
 - **Import dedup:** `harvest_time_entry_id` lives on each entry; push skips entries that already have one.
-- **Push safety:** `harvest --push` is explicit only; pushes approved + billable + not-yet-imported entries; fails loud, no silent partial success.
+- **Push safety:** `harvest push` is explicit only; pushes `approved && billable && !imported` entries (`Entry::is_pushable`); saves each id back immediately; fails loud, no silent partial success.
 - **needs_review** is a structured flag on the entry (the View shows it); notes are not polluted with markers.
 
 ## Install
@@ -57,9 +57,9 @@ A **Section** groups entries by `(repo_path, client, project, task)`. Approval i
 
 `/jimtime` - user-invoked only (`disable-model-invocation: true`), symlinked into `~/.claude/skills/`. Drives add/review/approve/push with human gates on approve and push. Source lives in this repo under `.claude/skills/jimtime/`.
 
-## Build phases
+## Build phases (all complete)
 
-1. **Local logging** (this phase): `status`, `map`, `add`, `today`.
-2. **Review/approval:** `review`, `approve`, `unapprove` over a date range or single day.
-3. **Harvest:** `harvest --dry-run`, `harvest --push`.
-4. **Polish:** tests, task aliases, date shortcuts (`--week`/`--last-week`/`--today`), `report` export, the skill, install docs.
+1. **Local logging:** `status`, `map`, `add`, `today`.
+2. **Review/approval:** `review` (+`--pending`), `approve` (+`--except`/`--include-needs-review`), `unapprove`.
+3. **Harvest:** `harvest dry-run`, `harvest push` (+ `projects`/`clients`/`tasks` lookups).
+4. **Polish:** `report` markdown export, test suite, task aliases, date shortcuts, the `/jimtime` skill, install docs.

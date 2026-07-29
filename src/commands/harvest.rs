@@ -147,14 +147,11 @@ fn dry_run(range: &RangeArgs, filter: &FilterArgs, include_non_billable: bool) -
     for date in &dates {
         let Some(day) = Day::load(date)? else { continue };
         for s in &day.sections {
-            if !s.approved || !filter.matches(s) {
+            if !filter.matches(s) {
                 continue;
             }
             for e in &s.entries {
-                if e.harvest_time_entry_id.is_some() {
-                    continue;
-                }
-                if !e.billable && !include_non_billable {
+                if !e.is_pushable(include_non_billable) {
                     continue;
                 }
                 println!(
@@ -207,32 +204,36 @@ async fn push(
             continue;
         };
         for si in 0..day.sections.len() {
-            if !(day.sections[si].approved && filter.matches(&day.sections[si])) {
+            if !filter.matches(&day.sections[si]) {
                 continue;
             }
-            let (project_id, task_id) =
-                (day.sections[si].project_id, day.sections[si].task_id);
+            let (project_id, task_id) = (day.sections[si].project_id, day.sections[si].task_id);
             for ei in 0..day.sections[si].entries.len() {
-                let (id, hours, notes, billable, already) = {
-                    let e = &day.sections[si].entries[ei];
-                    (
-                        e.id.clone(),
-                        e.hours,
-                        e.notes.clone(),
-                        e.billable,
-                        e.harvest_time_entry_id.is_some(),
-                    )
-                };
-                if already || (!billable && !include_non_billable) {
+                if !day.sections[si].entries[ei].is_pushable(include_non_billable) {
                     continue;
                 }
+                let (id, hours, notes) = {
+                    let e = &day.sections[si].entries[ei];
+                    (e.id.clone(), e.hours, e.notes.clone())
+                };
                 match api
                     .create_time_entry(project_id, task_id, date, hours, &notes)
                     .await
                 {
                     Ok(harvest_id) => {
                         day.sections[si].entries[ei].harvest_time_entry_id = Some(harvest_id);
-                        day.save()?;
+                        // The create already happened server-side; if we can't
+                        // persist the id, surface it loudly so the user can
+                        // record it and avoid a double-push on re-run.
+                        if let Err(save_err) = day.save() {
+                            eprintln!(
+                                "\nHarvest time entry {harvest_id} WAS created for {id}, but saving \
+                                 the store failed:\n  {save_err:#}\n\
+                                 Record  \"harvest_time_entry_id\": {harvest_id}  on entry {id} in \
+                                 the JSON BEFORE re-running, or it will be pushed again (double-billed)."
+                            );
+                            return Err(save_err);
+                        }
                         println!("  {id} → Harvest time entry {harvest_id}");
                         imported += 1;
                         total += hours;
@@ -240,8 +241,9 @@ async fn push(
                     Err(err) => {
                         eprintln!("\nFailed on {id}: {err:#}");
                         eprintln!(
-                            "Imported {imported} entr{} ({}h) before this failure; state saved. \
-                             Fix and re-run - already-imported entries are skipped.",
+                            "Imported {imported} entr{} ({}h) before this failure; state saved.\n\
+                             If this was a timeout the entry may still have been created in Harvest - \
+                             check there before re-running to avoid a duplicate.",
                             if imported == 1 { "y" } else { "ies" },
                             fmt_hours(total)
                         );

@@ -19,6 +19,7 @@ re_export! {
     review
     approve
     unapprove
+    report
     harvest
 }
 

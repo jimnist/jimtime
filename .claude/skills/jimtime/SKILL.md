@@ -32,17 +32,20 @@ Rules:
 ## Reviewing — `jimtime review`
 
 ```
-jimtime review [--today | --week | --last-week | --date YYYY-MM-DD | --from … --to …]
+jimtime review [<range>] [--pending]
 ```
-Summarize totals, needs-review, unapproved, and eligible-to-push for the user. Default range is today.
+Lists each entry with its ID and status (`●` unapproved, `○` approved, `[needs review]`, `[imported]`) plus totals. `--pending` shows only unapproved entries - use it to show the user what's outstanding before approving. Range flags: `--today | --week | --last-week | --date YYYY-MM-DD | --from … --to …` (default today). If an entry is wrong, the user can edit the day's JSON in `$JIMTIME_HOME/entries/…` directly.
 
 ## Approving — `jimtime approve` (user gate)
 
-Only when the user explicitly approves. Preview first, then apply:
+Only when the user explicitly approves. Approval is per entry; `approve` sweeps every unapproved entry in scope:
 ```
-jimtime approve <range> [--client … --project …]     # preview what would be approved
-jimtime approve <range> [filters] --yes               # apply; also clears needs-review
+jimtime approve <range> [--client … --project …]        # approves all except needs-review
+jimtime approve <range> --except <id> [--except <id>]   # …but hold these
+jimtime approve <range> --include-needs-review          # also approve flagged ones
+jimtime approve <range> --only <id> [--only <id>]       # approve just these (bypasses the hold)
 ```
+`needs-review` entries are held by default (it prints which). Approving clears the flag. Run `jimtime review --pending <range>` first and show the user.
 
 ## Pushing to Harvest — `jimtime harvest` (user gate)
 
@@ -51,12 +54,13 @@ Only on an explicit instruction to push. **Always dry-run first, show it, then p
 jimtime harvest dry-run <range>
 jimtime harvest push <range>     # creates REAL billable entries in Harvest; requires a clear go
 ```
-Push is idempotent - already-imported entries are skipped, so re-running is safe.
+Re-running skips entries that already saved a Harvest id, so it won't double-push those. If a push *errors* (e.g. a timeout), the entry may still have been created in Harvest - tell the user to check there before re-running.
 
 ## Reference
 
 - `jimtime status` / `jimtime map` - the current repo's Harvest mapping
 - `jimtime today [--create]` - today's log
+- `jimtime report <range> [--billable-only]` - markdown export to paste/share
 - `jimtime harvest projects | clients | tasks --project <id>` - browse Harvest to build the mapping (`$JIMTIME_HOME/config/harvest-projects.json`)
 
 ## Safety

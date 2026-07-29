@@ -47,9 +47,10 @@ Commands:
   map        Show the Harvest mapping for the current repo
   add        Add a time entry for the current repo
   today      Print today's time log
-  review     Summarize entries over a date range or a single day
-  approve    Approve matching sections (the human gate before pushing)
-  unapprove  Set matching sections back to unapproved
+  review     List entries over a date range or a single day
+  approve    Approve unapproved entries (the human gate before pushing)
+  unapprove  Set matching entries back to unapproved
+  report     Export a markdown time report over a date range or a single day
   harvest    Query Harvest, and dry-run or push approved time entries
 ```
 
@@ -59,23 +60,28 @@ Commands:
 # From the repo you did the work in:
 jimtime add --hours 1.25 --notes "Implemented invoice sync" [--needs-review]
 
-# Review a day, a range, or a week:
-jimtime review --today
-jimtime review --week
-jimtime review --from 2026-07-22 --to 2026-07-28
+# See what's outstanding (lists each entry with its ID + status):
+jimtime review --week --pending
 
-# Approve (the human gate) — preview, then apply:
-jimtime approve --week
-jimtime approve --week --yes          # also clears needs-review
+# Approve — per entry; sweeps everything not yet approved…
+jimtime approve --week                 # …except needs-review entries (held)
+jimtime approve --week --except <id>   # …and hold specific ones
+jimtime approve --week --include-needs-review
+jimtime approve --only <id>            # …or approve just these (bypasses the hold)
 
 # Push approved, billable, not-yet-imported entries to Harvest:
-jimtime harvest dry-run --week        # preview the exact payload
-jimtime harvest push --week           # creates the entries; idempotent
+jimtime harvest dry-run --week         # preview the exact payload
+jimtime harvest push --week            # creates the entries; skips ones already imported
+
+# Export a markdown report to paste/share:
+jimtime report --week
 ```
 
-Ranges are shared across `review`, `approve`, `unapprove`, and `harvest`:
-`--today`, `--week`, `--last-week`, `--date YYYY-MM-DD`, or `--from … --to …`
-(default: today). Approval and push default to billable rows only; pass
+Ranges are shared across `review`, `approve`, `unapprove`, `report`, and
+`harvest`: `--today`, `--week`, `--last-week`, `--date YYYY-MM-DD`, or
+`--from … --to …` (default: today). Approval is per entry - `review` shows
+`●` unapproved / `○` approved; if an entry is wrong, edit the day's JSON under
+`$JIMTIME_HOME/entries/` directly. Push defaults to billable rows only; pass
 `--include-non-billable` to include the rest.
 
 ## The Claude Code skill
