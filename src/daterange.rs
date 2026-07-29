@@ -98,3 +98,77 @@ impl RangeArgs {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty() -> RangeArgs {
+        RangeArgs {
+            from: None,
+            to: None,
+            date: None,
+            today: false,
+            week: false,
+            last_week: false,
+        }
+    }
+
+    #[test]
+    fn single_date_resolves_to_itself() {
+        let r = RangeArgs {
+            date: Some("2026-07-28".into()),
+            ..empty()
+        };
+        let (f, t) = r.resolve().unwrap();
+        assert_eq!(f, t);
+        assert_eq!(f.format("%Y-%m-%d").to_string(), "2026-07-28");
+        assert_eq!(r.dates().unwrap(), vec!["2026-07-28"]);
+    }
+
+    #[test]
+    fn from_to_is_inclusive_range() {
+        let r = RangeArgs {
+            from: Some("2026-07-27".into()),
+            to: Some("2026-07-29".into()),
+            ..empty()
+        };
+        assert_eq!(r.dates().unwrap().len(), 3);
+        assert_eq!(r.label().unwrap(), "2026-07-27 through 2026-07-29");
+    }
+
+    #[test]
+    fn from_after_to_errors() {
+        let r = RangeArgs {
+            from: Some("2026-07-29".into()),
+            to: Some("2026-07-27".into()),
+            ..empty()
+        };
+        assert!(r.resolve().is_err());
+    }
+
+    #[test]
+    fn half_open_from_errors() {
+        let r = RangeArgs {
+            from: Some("2026-07-27".into()),
+            ..empty()
+        };
+        assert!(r.resolve().is_err());
+    }
+
+    #[test]
+    fn conflicting_selectors_error() {
+        let r = RangeArgs {
+            today: true,
+            week: true,
+            ..empty()
+        };
+        assert!(r.resolve().is_err());
+    }
+
+    #[test]
+    fn default_is_a_single_day() {
+        let (f, t) = empty().resolve().unwrap();
+        assert_eq!(f, t, "no selectors resolves to a single day (today)");
+    }
+}

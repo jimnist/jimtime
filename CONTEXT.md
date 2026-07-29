@@ -13,19 +13,22 @@ The structured source of truth and only persisted artifact - one JSON file per d
 _Avoid_: database, log
 
 **View**:
-An on-demand, ephemeral rendering of the Store for human eyes - terminal output from `review`/`today`, or a future `report` export. Never persisted, never parsed back.
-_Avoid_: log, report (report is one specific View command)
+An on-demand, ephemeral rendering of the Store for human eyes - terminal output from `review`/`today`, or the `report` markdown export. Never persisted, never parsed back.
+_Avoid_: log
 
 **Mapping**:
 The association from a git repo's absolute toplevel path to a Harvest client/project/task and a default billable flag.
 _Avoid_: binding, link
 
 **Section**:
-Within a day, one client/project/task grouping. Approval happens at Section granularity.
+Within a day, one client/project/task grouping of Entries. A storage and display grouping only - it carries the Harvest ids shared by its Entries. Approval is not a Section property. [ADR-0004]
 _Avoid_: group, block
 
 **Approval**:
-A human-controlled state on a Section marking its Entries eligible to push to Harvest. Only the CLI sets it; it is never auto-set.
+A human-controlled boolean on each Entry marking it eligible to push to Harvest. Only the CLI sets it (via `approve`); it is never auto-set. [ADR-0004]
+
+**Needs-review**:
+A per-Entry flag meaning "this is an estimate, look before approving." `approve` holds these back by default; approving an Entry clears it.
 
 **Import state**:
 The record of which Entries have already been created in Harvest, keyed by Entry ID, used to prevent duplicate pushes.

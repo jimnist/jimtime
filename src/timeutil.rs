@@ -41,6 +41,47 @@ pub fn week_of(d: NaiveDate) -> (NaiveDate, NaiveDate) {
     (monday, monday + Duration::days(6))
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn d(s: &str) -> NaiveDate {
+        parse_naive(s).unwrap()
+    }
+
+    #[test]
+    fn hours_between_computes_decimal() {
+        assert_eq!(hours_between("09:00", "10:15").unwrap(), 1.25);
+        assert_eq!(hours_between("13:00", "13:30").unwrap(), 0.5);
+    }
+
+    #[test]
+    fn hours_between_rejects_bad_order() {
+        assert!(hours_between("10:00", "09:00").is_err());
+        assert!(hours_between("09:00", "09:00").is_err());
+        assert!(hours_between("nope", "10:00").is_err());
+    }
+
+    #[test]
+    fn week_of_is_monday_to_sunday() {
+        // 2026-07-28 is a Tuesday.
+        assert_eq!(week_of(d("2026-07-28")), (d("2026-07-27"), d("2026-08-02")));
+        // A Monday maps to itself.
+        assert_eq!(week_of(d("2026-07-27")), (d("2026-07-27"), d("2026-08-02")));
+        // A Sunday is the end of its week.
+        assert_eq!(week_of(d("2026-08-02")), (d("2026-07-27"), d("2026-08-02")));
+    }
+
+    #[test]
+    fn dates_between_is_inclusive() {
+        assert_eq!(
+            dates_between(d("2026-07-27"), d("2026-07-29")),
+            vec!["2026-07-27", "2026-07-28", "2026-07-29"]
+        );
+        assert_eq!(dates_between(d("2026-07-27"), d("2026-07-27")).len(), 1);
+    }
+}
+
 /// Validate a `YYYY-MM-DD` string, returning it normalized.
 pub fn parse_date(s: &str) -> Result<String> {
     let d = chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d")

@@ -1,82 +1,141 @@
 use super::Command;
 use anyhow::Result;
 use clap::Args;
+use std::collections::HashSet;
 
 use crate::daterange::RangeArgs;
 use crate::selection::FilterArgs;
 use crate::store::Day;
 use crate::view::fmt_hours;
 
-/// Approve matching sections (the human gate before pushing)
+/// Approve unapproved entries (the human gate before pushing)
+///
+/// Approves every unapproved entry in scope, except ones flagged `needs-review`
+/// (held until you look) and any passed to `--except`. Or approve just specific
+/// entries with `--only <id>`. Review first with `jimtime review --pending`.
 #[derive(Args)]
 pub struct Approve {
     #[command(flatten)]
     range: RangeArgs,
     #[command(flatten)]
     filter: FilterArgs,
-    /// Apply the change. Without it, prints what would be approved.
+    /// Approve only these entry IDs (repeatable); naming one approves it even if
+    /// it is flagged needs-review
     #[arg(long)]
-    yes: bool,
+    only: Vec<String>,
+    /// Entry IDs to hold back (repeatable)
+    #[arg(long)]
+    except: Vec<String>,
+    /// Also approve entries flagged needs-review
+    #[arg(long)]
+    include_needs_review: bool,
+}
+
+struct Line {
+    date: String,
+    hours: f64,
+    label: String,
+    id: String,
+}
+
+impl Line {
+    fn print(&self) {
+        println!(
+            "  {}  {}h  {}  ({})",
+            self.date,
+            fmt_hours(self.hours),
+            self.label,
+            self.id
+        );
+    }
 }
 
 #[async_trait::async_trait]
 impl Command for Approve {
     async fn run(&self) -> Result<()> {
-        let dates = self.range.dates()?;
-        let mut planned: Vec<(String, String, String, String, usize, f64)> = Vec::new();
-        let mut saved_days = 0;
+        let mut approved: Vec<Line> = Vec::new();
+        let mut held_review: Vec<Line> = Vec::new();
+        let mut held_except: Vec<Line> = Vec::new();
+        let mut seen: HashSet<String> = HashSet::new();
+        let only_mode = !self.only.is_empty();
 
-        for date in &dates {
+        for date in &self.range.dates()? {
             let Some(mut day) = Day::load(date)? else {
                 continue;
             };
             let mut changed = false;
             for s in &mut day.sections {
-                if !s.approved && self.filter.matches(s) {
-                    let hours: f64 = s.entries.iter().map(|e| e.hours).sum();
-                    planned.push((
-                        date.clone(),
-                        s.client_name.clone(),
-                        s.project_name.clone(),
-                        s.task_name.clone(),
-                        s.entries.len(),
-                        hours,
-                    ));
-                    if self.yes {
-                        s.approved = true;
-                        // Approval is the review gate; clear the needs-review flags.
-                        for e in &mut s.entries {
-                            e.needs_review = false;
-                        }
-                        changed = true;
+                if !self.filter.matches(s) {
+                    continue;
+                }
+                let label = format!("{} — {} — {}", s.client_name, s.project_name, s.task_name);
+                for e in &mut s.entries {
+                    seen.insert(e.id.clone());
+                    if e.approved {
+                        continue;
                     }
+                    // In --only mode, act on exactly those ids and nothing else.
+                    if only_mode && !self.only.contains(&e.id) {
+                        continue;
+                    }
+                    let line = Line {
+                        date: date.clone(),
+                        hours: e.hours,
+                        label: label.clone(),
+                        id: e.id.clone(),
+                    };
+                    if self.except.contains(&e.id) {
+                        held_except.push(line);
+                        continue;
+                    }
+                    // Naming an id via --only is explicit intent, so it bypasses
+                    // the needs-review hold.
+                    if !only_mode && e.needs_review && !self.include_needs_review {
+                        held_review.push(line);
+                        continue;
+                    }
+                    e.approved = true;
+                    e.needs_review = false;
+                    approved.push(line);
+                    changed = true;
                 }
             }
-            if self.yes && changed {
+            if changed {
                 day.save()?;
-                saved_days += 1;
             }
         }
 
-        if planned.is_empty() {
+        // A billing gate: an id that matched nothing is almost certainly a typo.
+        for id in self.only.iter().chain(self.except.iter()) {
+            if !seen.contains(id) {
+                eprintln!("warning: id {id} matched no entry in scope");
+            }
+        }
+
+        if approved.is_empty() && held_review.is_empty() && held_except.is_empty() {
             println!("Nothing to approve for {}.", self.range.label()?);
             return Ok(());
         }
 
-        let verb = if self.yes { "Approved" } else { "Would approve" };
-        println!("{verb} {} section(s):\n", planned.len());
-        for (date, client, project, task, count, hours) in &planned {
-            println!(
-                "  {date}  {client} — {project} — {task}  ({count} entr{}, {}h)",
-                if *count == 1 { "y" } else { "ies" },
-                fmt_hours(*hours)
-            );
+        if !approved.is_empty() {
+            println!("Approved {}:", plural(approved.len()));
+            approved.iter().for_each(Line::print);
         }
-        if self.yes {
-            println!("\nUpdated {saved_days} day(s).");
-        } else {
-            println!("\nRe-run with --yes to approve.");
+        if !held_review.is_empty() {
+            println!(
+                "\nHeld {} flagged needs-review (approve with --include-needs-review, or --only <id>):",
+                plural(held_review.len())
+            );
+            held_review.iter().for_each(Line::print);
+        }
+        if !held_except.is_empty() {
+            println!("\nHeld {} via --except:", plural(held_except.len()));
+            held_except.iter().for_each(Line::print);
         }
         Ok(())
     }
+}
+
+fn plural(n: usize) -> String {
+    format!("{n} entr{}", if n == 1 { "y" } else { "ies" })
 }

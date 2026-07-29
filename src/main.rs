@@ -30,6 +30,7 @@ register_commands! {
     Review
     Approve
     Unapprove
+    Report
     Harvest
 }
 
