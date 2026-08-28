@@ -57,15 +57,15 @@ impl RangeArgs {
             return Ok((d, d));
         }
         if self.today {
-            let t = timeutil::today_naive();
+            let t = timeutil::today_naive()?;
             return Ok((t, t));
         }
         if self.week {
-            return Ok(timeutil::week_of(timeutil::today_naive()));
+            return Ok(timeutil::week_of(timeutil::today_naive()?));
         }
         if self.last_week {
             return Ok(timeutil::week_of(
-                timeutil::today_naive() - Duration::days(7),
+                timeutil::today_naive()? - Duration::days(7),
             ));
         }
         if self.from.is_some() || self.to.is_some() {
@@ -78,7 +78,7 @@ impl RangeArgs {
             }
             return Ok((f, t));
         }
-        let t = timeutil::today_naive();
+        let t = timeutil::today_naive()?;
         Ok((t, t))
     }
 

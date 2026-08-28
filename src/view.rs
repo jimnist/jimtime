@@ -10,6 +10,22 @@ pub fn fmt_hours(h: f64) -> String {
     format!("{:.2}", h + 0.0)
 }
 
+/// Format an amount with two decimals and thousands separators, e.g.
+/// `1,234.50`. Currency-agnostic: the caller supplies the symbol or code.
+pub fn fmt_amount(v: f64) -> String {
+    let s = format!("{:.2}", v.abs() + 0.0);
+    let (whole, frac) = s.split_once('.').expect("{:.2} always has a decimal point");
+    let mut grouped = String::new();
+    for (i, c) in whole.chars().enumerate() {
+        if i > 0 && (whole.len() - i) % 3 == 0 {
+            grouped.push(',');
+        }
+        grouped.push(c);
+    }
+    let sign = if v < 0.0 { "-" } else { "" };
+    format!("{sign}{grouped}.{frac}")
+}
+
 /// `●` unapproved, `○` approved.
 pub fn marker(e: &Entry) -> char {
     if e.approved { '○' } else { '●' }
@@ -41,7 +57,7 @@ fn section_hours(s: &Section) -> (f64, f64) {
 /// Render a full day to a human-readable string.
 pub fn render_day(day: &Day) -> String {
     let mut out = String::new();
-    out.push_str(&format!("Time Log — {}\n", day.date));
+    out.push_str(&format!("Time Log - {}\n", day.date));
 
     if day.sections.is_empty() {
         out.push_str("\n  (no entries)\n");
@@ -53,7 +69,7 @@ pub fn render_day(day: &Day) -> String {
         let (total, billable) = section_hours(s);
         day_total += total;
         out.push_str(&format!(
-            "\n{} — {} — {}\n",
+            "\n{} - {} - {}\n",
             s.client_name, s.project_name, s.task_name
         ));
         for e in &s.entries {
@@ -76,4 +92,24 @@ pub fn render_day(day: &Day) -> String {
 
     out.push_str(&format!("\nDay total: {}h\n", fmt_hours(day_total)));
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn amounts_get_thousands_separators() {
+        assert_eq!(fmt_amount(0.0), "0.00");
+        assert_eq!(fmt_amount(12.5), "12.50");
+        assert_eq!(fmt_amount(999.999), "1,000.00");
+        assert_eq!(fmt_amount(1234.5), "1,234.50");
+        assert_eq!(fmt_amount(1234567.891), "1,234,567.89");
+    }
+
+    #[test]
+    fn negative_amounts_keep_one_leading_sign() {
+        assert_eq!(fmt_amount(-1234.5), "-1,234.50");
+        assert_eq!(fmt_amount(-0.0), "0.00");
+    }
 }

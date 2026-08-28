@@ -10,7 +10,11 @@ use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 
 const BASE: &str = "https://api.harvestapp.com/v2";
-const DEFAULT_USER_AGENT: &str = "jimtime (jim@jimnist.com)";
+const DEFAULT_USER_AGENT: &str = concat!(
+    "jimtime/",
+    env!("CARGO_PKG_VERSION"),
+    " (+https://github.com/jimnist/jimtime)"
+);
 
 pub struct HarvestApi {
     http: reqwest::Client,
@@ -59,7 +63,21 @@ pub struct TaskAssignment {
     pub task: TaskRef,
 }
 
+/// One row of the Harvest uninvoiced report: a project's billable time and
+/// expenses that have not been put on an invoice yet.
 #[derive(Deserialize)]
+pub struct UninvoicedRow {
+    pub client_name: String,
+    pub currency: String,
+    #[serde(default)]
+    pub uninvoiced_hours: f64,
+    #[serde(default)]
+    pub uninvoiced_amount: f64,
+    #[serde(default)]
+    pub uninvoiced_expenses: f64,
+}
+
+#[derive(Deserialize, Default)]
 struct Links {
     next: Option<String>,
 }
@@ -76,6 +94,7 @@ macro_rules! page {
         #[derive(Deserialize)]
         struct $name {
             $field: Vec<$item>,
+            #[serde(default)]
             links: Links,
         }
         impl Page<$item> for $name {
@@ -92,6 +111,7 @@ macro_rules! page {
 page!(ClientsPage, clients, Client);
 page!(ProjectsPage, projects, Project);
 page!(TaskAssignmentsPage, task_assignments, TaskAssignment);
+page!(UninvoicedPage, results, UninvoicedRow);
 
 impl HarvestApi {
     /// Build a client from environment credentials, failing loudly if unset.
@@ -166,6 +186,14 @@ impl HarvestApi {
     pub async fn task_assignments(&self, project_id: u64) -> Result<Vec<TaskAssignment>> {
         let url = format!("{BASE}/projects/{project_id}/task_assignments?per_page=2000");
         self.paged::<TaskAssignmentsPage, TaskAssignment>(url).await
+    }
+
+    /// The uninvoiced report over an inclusive `YYYY-MM-DD` date range: one row
+    /// per project with billable time and expenses not yet invoiced. Harvest
+    /// rejects a range wider than a year, so callers chunk long spans.
+    pub async fn uninvoiced_report(&self, from: &str, to: &str) -> Result<Vec<UninvoicedRow>> {
+        let url = format!("{BASE}/reports/uninvoiced?from={from}&to={to}&per_page=2000");
+        self.paged::<UninvoicedPage, UninvoicedRow>(url).await
     }
 
     /// Whether the account tracks time by duration (vs. start/end timestamps).

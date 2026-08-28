@@ -1,6 +1,9 @@
 max_width = 100
 single_line_if_else_max_width = 80
+use_field_init_shorthand = true
+
+# Nightly-only. Stable rustfmt prints a warning and ignores these; they apply
+# when formatting with `cargo +nightly fmt`.
 wrap_comments = true
 group_imports = "One"
 imports_granularity = "Module"
-use_field_init_shorthand = true

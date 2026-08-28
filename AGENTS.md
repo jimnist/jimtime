@@ -8,10 +8,10 @@ Before making changes, read the relevant docs under `docs/agents/`.
 
 Start here:
 
-- `docs/agents/README.md` — what lives where
-- `docs/agents/systems.md` — external systems this app talks to
-- `docs/agents/skills.md` — the `/jimtime` Claude Code skill this repo ships
-- `docs/HANDOFF.md` — the build spec; `CONTEXT.md` — the glossary; `docs/adr/` — decisions
+- `docs/agents/README.md` - what lives where
+- `docs/agents/systems.md` - external systems this app talks to
+- `docs/agents/skills.md` - the `/jimtime` Claude Code skill this repo ships
+- `docs/HANDOFF.md` - the build spec; `CONTEXT.md` - the glossary; `docs/adr/` - decisions
 
 ## Working rules
 

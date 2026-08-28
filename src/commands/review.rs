@@ -93,7 +93,7 @@ impl Command for Review {
 
         let (mut g_total, mut g_billable, mut g_eligible) = (0.0, 0.0, 0usize);
         for ((client, project, task), rows) in &groups {
-            println!("{client} — {project} — {task}");
+            println!("{client} - {project} - {task}");
             let mut total = 0.0;
             let mut billable = 0.0;
             let (mut unapproved, mut needs_review, mut eligible) = (0usize, 0usize, 0usize);

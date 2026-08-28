@@ -12,6 +12,6 @@ These docs describe *this* repository and the systems around it.
 
 ## Common starting points
 
-- `systems.md` — external systems this app depends on
-- `systems/` — one file per external system
-- `skills.md` — installed agent skills and how to add more
+- `systems.md` - external systems this app depends on
+- `systems/` - one file per external system
+- `skills.md` - installed agent skills and how to add more

@@ -6,8 +6,13 @@ authors = ["jimnist <jim@jimnist.com>"]
 description = "Track billable time per git repo and push approved entries to Harvest"
 readme = "README.md"
 license = "MIT"
-
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+repository = "https://github.com/jimnist/jimtime"
+homepage = "https://github.com/jimnist/jimtime"
+documentation = "https://github.com/jimnist/jimtime#readme"
+keywords = ["time-tracking", "harvest", "billing", "cli", "git"]
+categories = ["command-line-utilities"]
+rust-version = "1.85"
+exclude = ["/.github", "/docs", "/.claude", "/cliff.toml", "/AGENTS.md", "/CONTEXT.md"]
 
 [dependencies]
 
@@ -26,8 +31,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock", "std"
 chrono-tz = "0.10"
 # XDG data-dir fallback when $JIMTIME_HOME is unset.
 dirs = "6"
-
-
 
 [profile.release]
 strip = true
