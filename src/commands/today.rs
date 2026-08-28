@@ -17,7 +17,7 @@ pub struct Today {
 #[async_trait::async_trait]
 impl Command for Today {
     async fn run(&self) -> Result<()> {
-        let date = timeutil::today();
+        let date = timeutil::today()?;
 
         match Day::load(&date)? {
             Some(day) => print!("{}", render_day(&day)),

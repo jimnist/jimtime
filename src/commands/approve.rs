@@ -68,7 +68,7 @@ impl Command for Approve {
                 if !self.filter.matches(s) {
                     continue;
                 }
-                let label = format!("{} — {} — {}", s.client_name, s.project_name, s.task_name);
+                let label = format!("{} - {} - {}", s.client_name, s.project_name, s.task_name);
                 for e in &mut s.entries {
                     seen.insert(e.id.clone());
                     if e.approved {

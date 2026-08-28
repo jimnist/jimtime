@@ -29,7 +29,7 @@ pub struct Add {
     #[arg(long)]
     to: Option<String>,
 
-    /// Date YYYY-MM-DD (default: today, America/Los_Angeles)
+    /// Date YYYY-MM-DD (default: today in the billing timezone)
     #[arg(long)]
     date: Option<String>,
 
@@ -65,7 +65,7 @@ impl Command for Add {
 
         let date = match &self.date {
             Some(d) => timeutil::parse_date(d)?,
-            None => timeutil::today(),
+            None => timeutil::today()?,
         };
 
         let repo = repo::current_repo()?;
@@ -103,7 +103,7 @@ impl Command for Add {
         day.save()?;
 
         println!(
-            "Added {}h to {} — {} — {} on {}{}",
+            "Added {}h to {} - {} - {} on {}{}",
             fmt_hours(hours),
             proto.client_name,
             proto.project_name,

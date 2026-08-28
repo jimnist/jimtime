@@ -10,13 +10,18 @@ use crate::view::fmt_hours;
 
 /// Set matching entries back to unapproved
 ///
-/// Skips entries already pushed to Harvest - those can't be unapproved.
+/// Unapproves every approved entry in scope, except any passed to `--except`.
+/// Or take back just specific entries with `--only <id>`. Skips entries already
+/// pushed to Harvest - those can't be unapproved.
 #[derive(Args)]
 pub struct Unapprove {
     #[command(flatten)]
     range: RangeArgs,
     #[command(flatten)]
     filter: FilterArgs,
+    /// Unapprove only these entry IDs (repeatable)
+    #[arg(long)]
+    only: Vec<String>,
     /// Entry IDs to leave alone (repeatable)
     #[arg(long)]
     except: Vec<String>,
@@ -28,6 +33,7 @@ impl Command for Unapprove {
         let mut changed_lines: Vec<(String, f64, String, String)> = Vec::new();
         let mut skipped_imported = 0usize;
         let mut seen: HashSet<String> = HashSet::new();
+        let only_mode = !self.only.is_empty();
 
         for date in &self.range.dates()? {
             let Some(mut day) = Day::load(date)? else {
@@ -38,10 +44,14 @@ impl Command for Unapprove {
                 if !self.filter.matches(s) {
                     continue;
                 }
-                let label = format!("{} — {} — {}", s.client_name, s.project_name, s.task_name);
+                let label = format!("{} - {} - {}", s.client_name, s.project_name, s.task_name);
                 for e in &mut s.entries {
                     seen.insert(e.id.clone());
                     if !e.approved || self.except.contains(&e.id) {
+                        continue;
+                    }
+                    // In --only mode, act on exactly those ids and nothing else.
+                    if only_mode && !self.only.contains(&e.id) {
                         continue;
                     }
                     // Already pushed to Harvest - can't be unapproved.
@@ -59,9 +69,10 @@ impl Command for Unapprove {
             }
         }
 
-        for id in &self.except {
+        // A billing gate: an id that matched nothing is almost certainly a typo.
+        for id in self.only.iter().chain(self.except.iter()) {
             if !seen.contains(id) {
-                eprintln!("warning: --except {id} matched no entry in scope");
+                eprintln!("warning: id {id} matched no entry in scope");
             }
         }
 

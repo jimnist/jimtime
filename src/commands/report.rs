@@ -59,7 +59,7 @@ impl Command for Report {
             }
         }
 
-        println!("# Time Report — {}\n", self.range.label()?);
+        println!("# Time Report - {}\n", self.range.label()?);
         if groups.is_empty() {
             println!("_No entries._");
             return Ok(());
@@ -67,7 +67,7 @@ impl Command for Report {
 
         let (mut grand_total, mut grand_billable, mut grand_count) = (0.0, 0.0, 0usize);
         for ((client, project, task), rows) in &groups {
-            println!("## {client} — {project} — {task}\n");
+            println!("## {client} - {project} - {task}\n");
             println!("| Date | Hours | Billable | Notes |");
             println!("|---|---:|:---:|---|");
             let mut total = 0.0;

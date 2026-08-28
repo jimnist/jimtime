@@ -17,7 +17,7 @@ impl Command for Status {
         let repo = repo::current_repo()?;
         let mappings = Mappings::load()?;
         let m = mappings.for_repo(&repo)?;
-        let date = timeutil::today();
+        let date = timeutil::today()?;
 
         println!("Current repo:     {}", repo.display());
         println!("Mapped client:    {}", m.client_name);
@@ -27,6 +27,7 @@ impl Command for Status {
             "Billable default: {}",
             if m.billable { "yes" } else { "no" }
         );
+        println!("Billing timezone: {}", timeutil::billing_tz()?);
         println!("Today's store:    {}", paths::day_file(&date)?.display());
         Ok(())
     }
