@@ -108,7 +108,7 @@ impl Command for Harvest {
             HarvestCmd::Clients { all } => {
                 let api = HarvestApi::from_env()?;
                 let mut clients = api.list_clients(!all).await?;
-                clients.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+                clients.sort_by_key(|c| c.name.to_lowercase());
                 println!("{:<40} {:>10}", "CLIENT", "CLIENT_ID");
                 for c in &clients {
                     let flag = if c.is_active { "" } else { "  (archived)" };
