@@ -1,4 +1,4 @@
-# jimtime
+![jimtime](img/jimtime.jpg)
 
 [![CI](https://github.com/jimnist/jimtime/actions/workflows/ci.yml/badge.svg)](https://github.com/jimnist/jimtime/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/jimnist/jimtime?include_prereleases&sort=semver)](https://github.com/jimnist/jimtime/releases)
