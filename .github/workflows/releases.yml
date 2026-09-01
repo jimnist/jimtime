@@ -44,14 +44,9 @@ jobs:
             target: aarch64-apple-darwin
 
     steps:
-      - uses: actions/checkout@v4
-      - name: Cache cargo & target directories
-        uses: Swatinem/rust-cache@v2
-      - name: Install musl-tools on Linux
-        run: sudo apt-get update --yes && sudo apt-get install --yes musl-tools
-        if: contains(matrix.target, 'musl')
+      - uses: actions/checkout@v7
       - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v0
+        uses: houseabsolute/actions-rust-cross@v1
         with:
           command: "build"
           target: ${{ matrix.target }}
@@ -62,12 +57,12 @@ jobs:
         shell: bash
         run: |
           APP_NAME=jimtime
-          ver=${GITHUB_REF#refs/tags/}
+          ver=${GITHUB_REF_NAME}
           ASSET_PATH=$APP_NAME-$ver-${{ matrix.target }}${{ matrix.ext }}
           mv target/${{ matrix.target }}/release/$APP_NAME${{ matrix.ext }} $ASSET_PATH
           echo "ASSET_PATH=$ASSET_PATH" >> $GITHUB_ENV
       - name: Upload Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ${{ env.ASSET_PATH }}
           path: ${{ env.ASSET_PATH }}
@@ -78,12 +73,12 @@ jobs:
     runs-on: ubuntu-latest
     if: startsWith(github.ref, 'refs/tags/')
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
 
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: ./artifacts
 
@@ -96,7 +91,7 @@ jobs:
           git-cliff --latest --strip all | sed 1,2d > RELEASE.md
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: ./artifacts/**/*
           body_path: RELEASE.md
