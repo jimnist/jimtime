@@ -46,6 +46,8 @@ There is nothing to install beyond that: the Harvest client uses rustls, so
 there is no OpenSSL or other system library to hunt down first.
 The binary runs in the caller's working directory, so no shell alias or wrapper
 is needed.
+If you later change the code, the installed binary does not update itself.
+See [Running your changes](#running-your-changes).
 
 Prebuilt binaries on the [Releases page](https://github.com/jimnist/jimtime/releases)
 are **macOS only** (Apple Silicon and Intel).
@@ -351,6 +353,32 @@ It lands as a draft, so nothing publishes without a review.
 
 `.rustfmt.toml` sets a few nightly-only options.
 Stable `cargo fmt` warns about them and ignores them, which is expected.
+
+### Running your changes
+
+Building does not update the `jimtime` on your `PATH`.
+`cargo install` put a *copy* there, so `cargo build` only refreshes
+`./target/`, and every other shell keeps running whatever you installed last.
+Reinstall to make a change live:
+
+```sh
+cargo install --path . --force --locked
+```
+
+Nothing does this for you, and the stale binary gives no hint that it is stale,
+so it is easy to test a change in this repo and then use the old one everywhere
+else.
+`--locked` builds against `Cargo.lock`, the same dependency set CI and the
+release binaries use.
+
+To confirm which build is on your `PATH`, compare it against a fresh one:
+
+```sh
+cargo build --release
+shasum -a256 "$(command -v jimtime)" target/release/jimtime
+```
+
+Matching hashes mean the installed binary is current.
 
 ## Project docs
 
