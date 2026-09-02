@@ -20,4 +20,7 @@ Start here:
 - Prefer small, reviewable changes. Keep the CLI surface stable unless a change
   is deliberate and documented.
 - This app is **async by default** (`tokio`) because it talks to the Harvest API.
+- `cargo build` does not update the `jimtime` on `$PATH`; that is a copy made by
+  `cargo install`. Run `cargo install --path . --force --locked` before testing a
+  change through the installed binary, or you will be exercising the old one.
 - Never commit secrets, tokens, or credentials to code or docs. [ADR-0003]
