@@ -53,7 +53,7 @@ A **Section** groups entries by `(repo_path, client, project, task)` and is a st
 
 ## Install
 
-`cargo install --path .` puts a `jimtime` binary on `$PATH`. It runs in the caller's cwd, so `git rev-parse --show-toplevel` resolves the real working repo - no wrapper/alias hack.
+`cargo install --path .` puts a `jimtime` binary on `$PATH`. Release binaries are built for macOS only (both arches); every other platform builds from source, which needs no system libraries now that the Harvest client uses rustls. It runs in the caller's cwd, so `git rev-parse --show-toplevel` resolves the real working repo - no wrapper/alias hack.
 
 ## Skill
 

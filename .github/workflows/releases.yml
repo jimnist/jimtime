@@ -13,53 +13,36 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os_name: FreeBSD-x86_64
-            os: ubuntu-latest
-            target: x86_64-unknown-freebsd
-          - os_name: Linux-x86_64
-            os: ubuntu-latest
-            target: x86_64-unknown-linux-musl
-          - os_name: Linux-aarch64
-            os: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-          - os_name: Linux-arm
-            os: ubuntu-latest
-            target: arm-unknown-linux-musleabi
-          - os_name: Linux-riscv64
-            os: ubuntu-latest
-            target: riscv64gc-unknown-linux-gnu
-          - os_name: Windows-aarch64
-            os: windows-latest
-            target: aarch64-pc-windows-msvc
-            ext: ".exe"
-          - os_name: Windows-x86_64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            ext: ".exe"
-          - os_name: macOS-x86_64
-            os: macOS-latest
-            target: x86_64-apple-darwin
           - os_name: macOS-aarch64
             os: macOS-latest
             target: aarch64-apple-darwin
+          - os_name: macOS-x86_64
+            os: macOS-latest
+            target: x86_64-apple-darwin
 
     steps:
       - uses: actions/checkout@v7
-      - name: Build binary
-        uses: houseabsolute/actions-rust-cross@v1
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
         with:
-          command: "build"
-          target: ${{ matrix.target }}
-          toolchain: stable
-          args: "--locked --release"
-          strip: true
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo & target directories
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      - name: Build binary
+        run: cargo build --locked --release --target ${{ matrix.target }}
+
       - name: Rename Artifacts
         shell: bash
         run: |
           APP_NAME=jimtime
           ver=${GITHUB_REF_NAME}
-          ASSET_PATH=$APP_NAME-$ver-${{ matrix.target }}${{ matrix.ext }}
-          mv target/${{ matrix.target }}/release/$APP_NAME${{ matrix.ext }} $ASSET_PATH
+          ASSET_PATH=$APP_NAME-$ver-${{ matrix.target }}
+          mv target/${{ matrix.target }}/release/$APP_NAME $ASSET_PATH
           echo "ASSET_PATH=$ASSET_PATH" >> $GITHUB_ENV
       - name: Upload Artifact
         uses: actions/upload-artifact@v7
@@ -89,10 +72,13 @@ jobs:
       - name: List downloaded files (debug)
         run: ls -R ./artifacts
 
+      - name: Install git-cliff
+        uses: taiki-e/install-action@v2
+        with:
+          tool: git-cliff
+
       - name: Generate Release Body
-        run: |
-          cargo install git-cliff --locked
-          git-cliff --latest --strip all | sed 1,2d > RELEASE.md
+        run: git-cliff --latest --strip all | sed 1,2d > RELEASE.md
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v3
