@@ -3,6 +3,7 @@ use anyhow::Result;
 use clap::Args;
 use std::collections::HashSet;
 
+use crate::harvest::HarvestApi;
 use crate::daterange::RangeArgs;
 use crate::selection::FilterArgs;
 use crate::store::Day;
@@ -13,6 +14,10 @@ use crate::view::fmt_hours;
 /// Approves every unapproved entry in scope, except ones flagged `needs-review`
 /// (held until you look) and any passed to `--except`. Or approve just specific
 /// entries with `--only <id>`. Review first with `jimtime review --pending`.
+///
+/// Add `--push` to send them to Harvest in the same step. That is an
+/// irreversible external write, which is why it is opt-in and not the default;
+/// `jimtime harvest unpush` is the way back.
 #[derive(Args)]
 pub struct Approve {
     #[command(flatten)]
@@ -29,6 +34,13 @@ pub struct Approve {
     /// Also approve entries flagged needs-review
     #[arg(long)]
     include_needs_review: bool,
+    /// Push what was just approved to Harvest, in the same run
+    ///
+    /// Off by default: approving is local and reversible, pushing is a write to
+    /// a billing system and is not. Non-billable entries are approved but not
+    /// pushed. Undo with `jimtime harvest unpush`.
+    #[arg(long)]
+    push: bool,
 }
 
 struct Line {
@@ -131,6 +143,14 @@ impl Command for Approve {
         if !held_except.is_empty() {
             println!("\nHeld {} via --except:", plural(held_except.len()));
             held_except.iter().for_each(Line::print);
+        }
+
+        // Push only what this run actually approved. Nothing approved means
+        // nothing to push, and reaching for credentials would just be noise.
+        if self.push && !approved.is_empty() {
+            println!();
+            let api = HarvestApi::from_env()?;
+            super::push(&api, &self.range, &self.filter, false).await?;
         }
         Ok(())
     }

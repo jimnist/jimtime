@@ -238,6 +238,36 @@ impl HarvestApi {
             .context("parsing created time entry response")?;
         Ok(created.id)
     }
+
+    /// Delete a time entry. The inverse of {@link create_time_entry}, so a push
+    /// can be taken back.
+    ///
+    /// Idempotent: a 404 means the entry is already gone, which is the state the
+    /// caller wanted, so it is not an error. Harvest refuses to delete an entry
+    /// that has been invoiced or is otherwise locked, and that IS an error - the
+    /// money has left the building and the local store must keep pointing at it.
+    pub async fn delete_time_entry(&self, id: u64) -> Result<()> {
+        let url = format!("{BASE}/time_entries/{id}");
+        let resp = self
+            .auth(self.http.delete(&url))
+            .send()
+            .await
+            .with_context(|| format!("deleting time entry at {url}"))?;
+
+        let status = resp.status();
+        if status == reqwest::StatusCode::NOT_FOUND {
+            return Ok(());
+        }
+        if !status.is_success() {
+            let detail = resp.text().await.unwrap_or_default();
+            bail!(
+                "Harvest API returned {status} deleting time entry {id}\n{detail}\n\
+                 If it has been invoiced or locked, Harvest will not delete it - \
+                 leave the local entry alone so it keeps pointing at the real one."
+            );
+        }
+        Ok(())
+    }
 }
 
 #[derive(Deserialize)]
