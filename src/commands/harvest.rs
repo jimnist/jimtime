@@ -3,7 +3,7 @@ use anyhow::{Result, bail};
 use chrono::{Duration, Months, NaiveDate};
 use clap::{Args, Subcommand};
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use crate::daterange::RangeArgs;
 use crate::harvest::HarvestApi;
@@ -71,6 +71,20 @@ enum HarvestCmd {
         /// Include non-billable entries
         #[arg(long)]
         include_non_billable: bool,
+    },
+    /// Delete pushed entries from Harvest and unlink them locally (undo a push)
+    ///
+    /// The inverse of `push`. Harvest will not delete an invoiced or locked
+    /// entry, and those are left linked. Unpushing does not unapprove: run
+    /// `jimtime unapprove` afterwards if that is what you want.
+    Unpush {
+        #[command(flatten)]
+        range: RangeArgs,
+        #[command(flatten)]
+        filter: FilterArgs,
+        /// Unpush only these entry IDs (repeatable)
+        #[arg(long)]
+        only: Vec<String>,
     },
 }
 
@@ -156,6 +170,14 @@ impl Command for Harvest {
             } => {
                 let api = HarvestApi::from_env()?;
                 push(&api, range, filter, *include_non_billable).await?;
+            }
+            HarvestCmd::Unpush {
+                range,
+                filter,
+                only,
+            } => {
+                let api = HarvestApi::from_env()?;
+                unpush(&api, range, filter, only).await?;
             }
         }
         Ok(())
@@ -366,7 +388,7 @@ fn dry_run(range: &RangeArgs, filter: &FilterArgs, include_non_billable: bool) -
 
 /// Create Harvest time entries for eligible entries, saving the returned id back
 /// to each entry immediately so a mid-run failure never re-pushes.
-async fn push(
+pub(crate) async fn push(
     api: &HarvestApi,
     range: &RangeArgs,
     filter: &FilterArgs,
@@ -446,6 +468,84 @@ async fn push(
         println!(
             "\nTotal imported: {imported} entr{}, {}h",
             if imported == 1 { "y" } else { "ies" },
+            fmt_hours(total)
+        );
+    }
+    Ok(())
+}
+
+/// Delete each pushed entry from Harvest and clear its local link, saving after
+/// every one so a mid-run failure leaves the store agreeing with Harvest.
+///
+/// The counterpart to `push`, and the reason `approve --push` is safe to offer:
+/// `unapprove` refuses to touch an entry that carries a Harvest id, so without
+/// this an auto-pushed entry could never be walked back.
+async fn unpush(
+    api: &HarvestApi,
+    range: &RangeArgs,
+    filter: &FilterArgs,
+    only: &[String],
+) -> Result<()> {
+    let only_mode = !only.is_empty();
+    let dates = range.dates()?;
+    println!("Unpushing Harvest entries - {}\n", range.label()?);
+
+    let mut removed = 0usize;
+    let mut total = 0.0;
+    let mut seen: HashSet<String> = HashSet::new();
+
+    for date in &dates {
+        let Some(mut day) = Day::load(date)? else {
+            continue;
+        };
+        for si in 0..day.sections.len() {
+            if !filter.matches(&day.sections[si]) {
+                continue;
+            }
+            for ei in 0..day.sections[si].entries.len() {
+                let (id, hours, harvest_id) = {
+                    let e = &day.sections[si].entries[ei];
+                    seen.insert(e.id.clone());
+                    (e.id.clone(), e.hours, e.harvest_time_entry_id)
+                };
+                let Some(harvest_id) = harvest_id else { continue };
+                if only_mode && !only.contains(&id) {
+                    continue;
+                }
+                api.delete_time_entry(harvest_id).await?;
+                // Deleted server-side; drop the link so the entry is pushable
+                // again and `unapprove` will accept it.
+                day.sections[si].entries[ei].harvest_time_entry_id = None;
+                if let Err(save_err) = day.save() {
+                    eprintln!(
+                        "\nHarvest time entry {harvest_id} WAS deleted for {id}, but saving the \
+                         store failed:\n  {save_err:#}\n\
+                         Remove  \"harvest_time_entry_id\": {harvest_id}  from entry {id} in the \
+                         JSON by hand, or jimtime will keep believing it is still in Harvest."
+                    );
+                    return Err(save_err);
+                }
+                println!("  {id} ← removed Harvest time entry {harvest_id}");
+                removed += 1;
+                total += hours;
+            }
+        }
+    }
+
+    // Same billing-gate reasoning as approve: an id that matched nothing is
+    // almost certainly a typo, and silence would look like success.
+    for id in only.iter() {
+        if !seen.contains(id) {
+            eprintln!("warning: id {id} matched no entry in scope");
+        }
+    }
+
+    if removed == 0 {
+        println!("Nothing to unpush.");
+    } else {
+        println!(
+            "\nTotal removed: {removed} entr{}, {}h",
+            if removed == 1 { "y" } else { "ies" },
             fmt_hours(total)
         );
     }

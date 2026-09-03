@@ -206,8 +206,17 @@ jimtime unapprove --only <id>                 # take one back
 ```
 
 `unapprove` mirrors `approve`: it sweeps the range, honors `--except`, and takes `--only` to act on exactly the ids you name.
-It skips entries already pushed to Harvest, since those cannot be un-billed from here.
+It skips entries already pushed to Harvest; use `jimtime harvest unpush` first to unlink those, then unapprove.
 Both commands also narrow by `--client`, `--project`, or `--repo`.
+
+If you always push straight after approving, `--push` does both in one step:
+
+```sh
+jimtime approve --today --push
+```
+
+It is opt-in rather than the default because the two acts differ in kind: approving is local and reversible, pushing is a write to a billing system.
+Only what that run actually approved is pushed, and non-billable entries are approved but left where they are.
 
 ### Push
 
@@ -236,6 +245,17 @@ jimtime harvest push --week   # creates real entries in Harvest
 Push sends approved, billable, not-yet-imported entries and saves each returned Harvest id back to the store immediately, so a re-run skips them.
 Pass `--include-non-billable` to send the rest.
 Hours are pushed exactly as stored, with no rounding.
+
+To take a push back:
+
+```sh
+jimtime harvest unpush --today            # delete from Harvest, unlink locally
+jimtime harvest unpush --only <id>        # just one
+```
+
+`unpush` deletes the Harvest time entry and clears the local link, so the entry becomes pushable again and `unapprove` will accept it.
+Harvest refuses to delete an entry that has been invoiced or locked; those stay linked and the command reports the failure rather than lying about it.
+Unpushing does not unapprove - run `unapprove` after if that is what you meant.
 
 ### Report
 

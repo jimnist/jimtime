@@ -286,4 +286,23 @@ mod tests {
         e.harvest_time_entry_id = Some(9);
         assert!(!e.is_pushable(false), "already imported");
     }
+
+    #[test]
+    fn clearing_the_harvest_link_makes_an_entry_pushable_again() {
+        // The contract `harvest unpush` depends on: dropping the id is the whole
+        // undo. Without it an auto-pushed entry is stuck, because `unapprove`
+        // refuses to touch anything carrying a Harvest id.
+        let mut e = Entry {
+            id: "x".into(),
+            hours: 1.0,
+            billable: true,
+            approved: true,
+            needs_review: false,
+            notes: "n".into(),
+            harvest_time_entry_id: Some(9),
+        };
+        assert!(!e.is_pushable(false));
+        e.harvest_time_entry_id = None;
+        assert!(e.is_pushable(false), "unpushed entries are pushable again");
+    }
 }
