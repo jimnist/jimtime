@@ -247,6 +247,27 @@ impl Day {
     }
 }
 
+/// Every day file under `root` (`entries/YYYY/MM/*.json`), sorted.
+pub fn day_files(root: &Path) -> Result<Vec<std::path::PathBuf>> {
+    let mut out = Vec::new();
+    if !root.exists() {
+        return Ok(out);
+    }
+    let mut stack = vec![root.to_path_buf()];
+    while let Some(dir) = stack.pop() {
+        for ent in std::fs::read_dir(&dir).with_context(|| format!("reading {}", dir.display()))? {
+            let p = ent?.path();
+            if p.is_dir() {
+                stack.push(p);
+            } else if p.extension().is_some_and(|e| e == "json") {
+                out.push(p);
+            }
+        }
+    }
+    out.sort();
+    Ok(out)
+}
+
 /// Write a file via a temp file and rename, so a crash never leaves a
 /// half-written billing record. Creates parent directories.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<()> {
