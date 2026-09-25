@@ -53,6 +53,12 @@ A short hash of a Draft's entries, amounts and recipients. `invoice finalize --c
 **Finalize**:
 Assign an Invoice its number, write its record and PDF, lock its Entries (`Entry.invoice`), then send and upload it. The irreversible step; `invoice void` is the undo, and it keeps the number used.
 
+**Paid**:
+An Invoice whose `paid_date` is set, by `invoice paid` or from Harvest. An issued, unpaid, non-void Invoice is **outstanding**, and **overdue** once past its due date. [ADR-0011]
+
+**Imported invoice**:
+An Invoice issued in Harvest and brought in by `invoice import-harvest` (`source: harvest`). Harvest's line items and amount are what was billed; its `lines` are the time it covered. [ADR-0011]
+
 **Data repo**:
 `$JIMTIME_HOME` when it is the toplevel of its own git repo. Every write is pulled, committed and pushed automatically. [ADR-0009]
 

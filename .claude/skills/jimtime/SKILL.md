@@ -60,7 +60,7 @@ jimtime invoice finalize --client <key> <same range> --confirm <fingerprint>   #
 2. Tell the user the total and recipients and ask them to check the PDF. Wait for a clear go.
 3. Only then run the finalize line the draft printed, with its `--confirm <fingerprint>`. If it says the selection changed, draft again and re-confirm with the user - never work around it.
 
-`finalize` emails the PDF to the client; `--no-send` finalizes without emailing. If the email or cloud upload fails, the invoice is still issued - tell the user and offer the retry it names (`jimtime invoice send <number>` / `jimtime cloud upload <number>`). `jimtime invoice list` shows invoices; `jimtime invoice void <number>` voids one (its entries become invoiceable again; only on explicit instruction).
+`finalize` emails the PDF to the client; `--no-send` finalizes without emailing. If the email or cloud upload fails, the invoice is still issued - tell the user and offer the retry it names (`jimtime invoice send <number>` / `jimtime cloud upload <number>`). `jimtime invoice list` shows invoices with paid/open/overdue status and the outstanding total; `jimtime invoice paid <number> [--date YYYY-MM-DD]` records a payment when the user says one came in; `jimtime invoice void <number>` voids one (its entries become invoiceable again; only on explicit instruction). `jimtime invoice import-harvest` (read-only toward Harvest) brings Harvest's invoices, PDFs and billed time into the store - always run `--dry-run` first and show the user.
 
 ## Pushing to Harvest - `jimtime harvest` (optional, user gate)
 

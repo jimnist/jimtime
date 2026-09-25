@@ -218,7 +218,7 @@ fn sync_now() -> Result<()> {
 
 /// Every day file parses and the config validates.
 fn check_hand_edits(root: &Path) -> Result<()> {
-    for path in super::config::day_files(&root.join("entries"))? {
+    for path in crate::store::day_files(&root.join("entries"))? {
         Day::load_path(&path).context("a hand-edited day file is invalid; fix it before syncing")?;
     }
     crate::config::Config::load_optional()

@@ -112,13 +112,107 @@ page!(ClientsPage, clients, Client);
 page!(ProjectsPage, projects, Project);
 page!(TaskAssignmentsPage, task_assignments, TaskAssignment);
 page!(UninvoicedPage, results, UninvoicedRow);
-page!(InvoicesPage, invoices, InvoiceRef);
+page!(InvoicesPage, invoices, HarvestInvoice);
+page!(TimeEntriesPage, time_entries, TimeEntry);
 
-/// Just the number of a Harvest invoice.
-#[derive(Deserialize)]
-pub struct InvoiceRef {
+/// An id and name, as Harvest nests them.
+#[derive(Deserialize, Clone, Debug)]
+pub struct Named {
+    pub id: u64,
+    pub name: String,
+}
+
+#[derive(Deserialize, Clone, Debug)]
+pub struct IdOnly {
+    pub id: u64,
+}
+
+/// A time entry's link to the invoice that billed it.
+#[derive(Deserialize, Clone, Debug)]
+pub struct InvoiceLink {
+    pub id: u64,
     #[serde(default)]
     pub number: Option<String>,
+}
+
+/// A Harvest time entry, as far as importing history needs it.
+#[derive(Deserialize, Clone, Debug)]
+pub struct TimeEntry {
+    pub id: u64,
+    pub spent_date: String,
+    pub hours: f64,
+    #[serde(default)]
+    pub notes: Option<String>,
+    pub billable: bool,
+    #[serde(default)]
+    pub billable_rate: Option<f64>,
+    #[serde(default)]
+    pub invoice: Option<InvoiceLink>,
+    pub client: Named,
+    pub project: Named,
+    pub task: Named,
+    pub user: IdOnly,
+}
+
+/// One line of a Harvest invoice, exactly as the client saw it.
+#[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]
+pub struct InvoiceLineItem {
+    pub kind: String,
+    #[serde(default)]
+    pub description: Option<String>,
+    pub quantity: f64,
+    pub unit_price: f64,
+    pub amount: f64,
+}
+
+/// A Harvest invoice.
+#[derive(Deserialize, Clone, Debug)]
+pub struct HarvestInvoice {
+    pub id: u64,
+    #[serde(default)]
+    pub number: Option<String>,
+    pub client: Named,
+    pub client_key: String,
+    pub amount: f64,
+    pub currency: String,
+    /// `draft`, `open`, `paid` or `closed`.
+    pub state: String,
+    #[serde(default)]
+    pub issue_date: Option<String>,
+    #[serde(default)]
+    pub due_date: Option<String>,
+    #[serde(default)]
+    pub period_start: Option<String>,
+    #[serde(default)]
+    pub period_end: Option<String>,
+    #[serde(default)]
+    pub subject: Option<String>,
+    #[serde(default)]
+    pub notes: Option<String>,
+    #[serde(default)]
+    pub sent_at: Option<String>,
+    #[serde(default)]
+    pub paid_date: Option<String>,
+    #[serde(default)]
+    pub discount: Option<f64>,
+    #[serde(default)]
+    pub discount_amount: f64,
+    #[serde(default)]
+    pub tax: Option<f64>,
+    #[serde(default)]
+    pub tax_amount: f64,
+    #[serde(default)]
+    pub tax2: Option<f64>,
+    #[serde(default)]
+    pub tax2_amount: f64,
+    #[serde(default)]
+    pub line_items: Vec<InvoiceLineItem>,
+}
+
+#[derive(Deserialize)]
+struct ClientDetail {
+    #[serde(default)]
+    address: Option<String>,
 }
 
 impl HarvestApi {
@@ -199,13 +293,65 @@ impl HarvestApi {
     /// Every invoice number issued in Harvest, any state (drafts included:
     /// a draft already holds its number there).
     pub async fn invoice_numbers(&self) -> Result<Vec<String>> {
-        let url = format!("{BASE}/invoices?per_page=2000");
         Ok(self
-            .paged::<InvoicesPage, InvoiceRef>(url)
+            .invoices()
             .await?
             .into_iter()
             .filter_map(|i| i.number)
             .collect())
+    }
+
+    /// Every invoice, any state.
+    pub async fn invoices(&self) -> Result<Vec<HarvestInvoice>> {
+        let url = format!("{BASE}/invoices?per_page=2000");
+        self.paged::<InvoicesPage, HarvestInvoice>(url).await
+    }
+
+    /// Every time entry of one user.
+    pub async fn time_entries(&self, user_id: u64) -> Result<Vec<TimeEntry>> {
+        let url = format!("{BASE}/time_entries?user_id={user_id}&per_page=2000");
+        self.paged::<TimeEntriesPage, TimeEntry>(url).await
+    }
+
+    /// The id of the user the token belongs to.
+    pub async fn me(&self) -> Result<u64> {
+        let me: IdOnly = self.get(&format!("{BASE}/users/me")).await?;
+        Ok(me.id)
+    }
+
+    /// The account's name and its `*.harvestapp.com` domain.
+    pub async fn company(&self) -> Result<(String, String)> {
+        let c: Company = self.get(&format!("{BASE}/company")).await?;
+        Ok((c.name, c.full_domain))
+    }
+
+    /// A client's postal address, as Harvest has it.
+    pub async fn client_address(&self, id: u64) -> Result<Option<String>> {
+        let c: ClientDetail = self.get(&format!("{BASE}/clients/{id}")).await?;
+        Ok(c.address.filter(|a| !a.trim().is_empty()))
+    }
+
+    /// An invoice's PDF, from the client-facing link Harvest emails out. The
+    /// API has no PDF endpoint; this link needs no auth, only the invoice's
+    /// `client_key`.
+    pub async fn invoice_pdf(&self, full_domain: &str, client_key: &str) -> Result<Vec<u8>> {
+        let url = format!("https://{full_domain}/client/invoices/{client_key}.pdf");
+        let resp = self
+            .http
+            .get(&url)
+            .header(USER_AGENT, &self.user_agent)
+            .send()
+            .await
+            .context("downloading an invoice PDF from Harvest")?;
+        let status = resp.status();
+        if !status.is_success() {
+            bail!("Harvest returned {status} for an invoice PDF");
+        }
+        let bytes = resp.bytes().await?.to_vec();
+        if !bytes.starts_with(b"%PDF") {
+            bail!("Harvest's invoice link did not return a PDF");
+        }
+        Ok(bytes)
     }
 
     /// The uninvoiced report over an inclusive `YYYY-MM-DD` date range: one row
@@ -294,6 +440,10 @@ impl HarvestApi {
 struct Company {
     #[serde(default)]
     wants_timestamp_timers: bool,
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    full_domain: String,
 }
 
 #[derive(Serialize)]

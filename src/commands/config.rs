@@ -3,13 +3,13 @@ use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
 use serde::Deserialize;
 use std::collections::{BTreeMap, HashMap};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::config::Config as Settings;
 use crate::datarepo::{self, Sync};
 use crate::paths;
 use crate::slug::slugify;
-use crate::store::{Day, write_atomic};
+use crate::store::{Day, day_files, write_atomic};
 
 /// Create, migrate and check the config file (config/jimtime.toml)
 #[derive(Args)]
@@ -308,27 +308,6 @@ fn rewrite_days(keys: &Keys) -> Result<usize> {
         count += 1;
     }
     Ok(count)
-}
-
-/// Every `entries/YYYY/MM/*.json`, sorted.
-pub fn day_files(root: &Path) -> Result<Vec<PathBuf>> {
-    let mut out = Vec::new();
-    if !root.exists() {
-        return Ok(out);
-    }
-    let mut stack = vec![root.to_path_buf()];
-    while let Some(dir) = stack.pop() {
-        for ent in std::fs::read_dir(&dir).with_context(|| format!("reading {}", dir.display()))? {
-            let p = ent?.path();
-            if p.is_dir() {
-                stack.push(p);
-            } else if p.extension().is_some_and(|e| e == "json") {
-                out.push(p);
-            }
-        }
-    }
-    out.sort();
-    Ok(out)
 }
 
 const MIGRATED_HEADER: &str = r#"# jimtime config. Non-secret: passwords and tokens come from the

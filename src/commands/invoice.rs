@@ -11,7 +11,7 @@ use crate::harvest::HarvestApi;
 use crate::daterange::RangeArgs;
 use crate::invoice::mail::Mailer;
 use crate::invoice::render::{self, currency_symbol};
-use crate::invoice::{self as inv, Status};
+use crate::invoice::{self as inv, Source, Status};
 use crate::paths;
 use crate::timeutil;
 use crate::view::{fmt_amount, fmt_hours};
@@ -77,7 +77,17 @@ enum InvoiceCmd {
     },
     /// Void an invoice: its entries become invoiceable again; the number stays used
     Void { number: String },
-    /// List invoices
+    /// Record that an invoice was paid
+    Paid {
+        number: String,
+        /// The day it was paid, YYYY-MM-DD (default: today)
+        #[arg(long)]
+        date: Option<String>,
+        /// Take a recorded payment back
+        #[arg(long, conflicts_with = "date")]
+        undo: bool,
+    },
+    /// List invoices, with what is paid, open and overdue
     List {
         /// Only this client (key)
         #[arg(long)]
@@ -85,6 +95,16 @@ enum InvoiceCmd {
     },
     /// Open an invoice's PDF
     Open { number: String },
+    /// Import invoicing history from Harvest (read-only there; re-runnable)
+    ///
+    /// Saves each Harvest invoice as a record with its PDF, locks the entries
+    /// Harvest billed so they are never invoiced again, and adds Harvest-only
+    /// time to the store. Run with --dry-run first.
+    ImportHarvest {
+        /// Show what would change without writing anything
+        #[arg(long)]
+        dry_run: bool,
+    },
 }
 
 #[async_trait::async_trait]
@@ -100,11 +120,13 @@ impl Command for Invoice {
             } => finalize(scope, confirm.as_deref(), *no_send, *no_open).await,
             InvoiceCmd::Send { number, to } => send(number, to).await,
             InvoiceCmd::Void { number } => void(number),
+            InvoiceCmd::Paid { number, date, undo } => paid(number, date.as_deref(), *undo),
             InvoiceCmd::List { client } => list(client.as_deref()),
             InvoiceCmd::Open { number } => {
                 let i = inv::Invoice::load(number)?;
                 render::open(&i.pdf_path()?)
             }
+            InvoiceCmd::ImportHarvest { dry_run } => import_harvest(*dry_run).await,
         }
     }
 }
@@ -387,6 +409,15 @@ fn void(number: &str) -> Result<()> {
     if i.status == Status::Void {
         bail!("invoice {number} is already void");
     }
+    if i.source == Source::Harvest {
+        bail!(
+            "invoice {number} was issued in Harvest; void it there, then re-run \
+             `jimtime invoice import-harvest`"
+        );
+    }
+    if let Some(d) = &i.paid_date {
+        bail!("invoice {number} was paid on {d}; `jimtime invoice paid {number} --undo` first");
+    }
     inv::set_entry_invoice(&i.lines, number, false)?;
     i.status = Status::Void;
     i.voided_at = Some(timeutil::now_rfc3339()?);
@@ -421,22 +452,115 @@ fn list(client: Option<&str>) -> Result<()> {
         "{:<12} {:<10}  {:<24} {:>14}  STATUS",
         "NUMBER", "ISSUED", "CLIENT", "TOTAL"
     );
+    let today = timeutil::today_naive()?;
+    let mut outstanding: std::collections::BTreeMap<&str, f64> = Default::default();
     for i in &all {
-        let status = match i.status {
-            Status::Void => "void".to_string(),
-            _ if i.sent.is_empty() => "not sent".to_string(),
-            _ => format!("sent {}", &i.sent.last().expect("non-empty").at[..10]),
+        let mut notes = Vec::new();
+        if i.source == Source::Harvest {
+            notes.push("from Harvest");
+        }
+        if !i.uploads.is_empty() {
+            notes.push("uploaded");
+        }
+        let notes = if notes.is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", notes.join(", "))
         };
-        let uploaded = if i.uploads.is_empty() { "" } else { ", uploaded" };
         println!(
-            "{:<12} {:<10}  {:<24} {:>14}  {status}{uploaded}",
+            "{:<12} {:<10}  {:<24} {:>14}  {}{notes}",
             i.number,
             i.issue_date,
             truncate(&i.client.name, 24),
             format!("{} {}", fmt_amount(i.total), i.currency),
+            i.payment_status(today),
         );
+        if i.is_outstanding() {
+            *outstanding.entry(&i.currency).or_default() += i.total;
+        }
+    }
+    for (currency, total) in outstanding {
+        println!("\nOutstanding: {} {currency}", fmt_amount(total));
     }
     Ok(())
+}
+
+fn paid(number: &str, date: Option<&str>, undo: bool) -> Result<()> {
+    let sync = Sync::begin("invoice paid", false)?;
+    let mut i = inv::Invoice::load(number)?;
+    if i.status == Status::Void {
+        bail!("invoice {number} is void");
+    }
+    if undo {
+        if i.paid_date.take().is_none() {
+            bail!("invoice {number} is not marked paid");
+        }
+        i.save()?;
+        sync.commit(&format!("invoice: {number} not paid"))?;
+        println!("Invoice {number} is no longer marked paid.");
+        return Ok(());
+    }
+    let date = match date {
+        Some(d) => timeutil::parse_date(d)?,
+        None => timeutil::today()?,
+    };
+    if date < i.issue_date {
+        bail!("{date} is before invoice {number} was issued ({})", i.issue_date);
+    }
+    if let Some(prev) = &i.paid_date {
+        eprintln!("note: invoice {number} was marked paid on {prev}; now {date}");
+    }
+    i.paid_date = Some(date.clone());
+    i.save()?;
+    sync.commit(&format!("invoice: {number} paid {date}"))?;
+    println!(
+        "Invoice {number} ({} {}) paid on {date}.",
+        fmt_amount(i.total),
+        i.currency
+    );
+    Ok(())
+}
+
+async fn import_harvest(dry_run: bool) -> Result<()> {
+    let config = Config::load()?;
+    let api = HarvestApi::from_env()
+        .context("importing from Harvest needs its credentials (read-only)")?;
+    // Invoice numbers and entries must land on the latest data.
+    let sync = Sync::begin("invoice import-harvest", !dry_run)?;
+    let r = crate::invoice::harvest_import::run(&config, &api, dry_run).await?;
+
+    let verb = if dry_run { "Would" } else { "Did" };
+    println!("{verb} import from Harvest:");
+    let list = |v: &[String]| if v.is_empty() { "none".to_string() } else { v.join(", ") };
+    println!("  New invoice records:        {}", list(&r.records_new));
+    println!("  Refreshed invoice records:  {}", list(&r.records_refreshed));
+    println!("  Entries locked to invoices: {}", r.locked);
+    println!("  Entries added, invoiced:    {}", r.backfilled_invoiced);
+    println!(
+        "  Entries added, unbilled:    {}{}",
+        r.backfilled_unbilled,
+        if r.backfilled_unbilled > 0 {
+            " (flagged needs-review)"
+        } else {
+            ""
+        }
+    );
+    if !r.drafts_skipped.is_empty() {
+        println!(
+            "  Draft invoices skipped:     {} (not issued; import again once they are)",
+            list(&r.drafts_skipped)
+        );
+    }
+    if dry_run {
+        println!("\nNothing was written. Run without --dry-run to import.");
+        return Ok(());
+    }
+    sync.commit(&format!(
+        "invoice: import Harvest history ({} invoices, {} entries added, {} locked)",
+        r.records_new.len() + r.records_refreshed.len(),
+        r.backfilled_invoiced + r.backfilled_unbilled,
+        r.locked
+    ))
 }
 
 fn truncate(s: &str, width: usize) -> String {

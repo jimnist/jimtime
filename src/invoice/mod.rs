@@ -2,6 +2,7 @@
 //! invoice record that is the durable truth of what was billed. [ADR-0007,
 //! ADR-0008]
 
+pub mod harvest_import;
 pub mod mail;
 pub mod render;
 
@@ -52,6 +53,50 @@ pub struct Invoice {
     pub uploads: Vec<Upload>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub voided_at: Option<String>,
+    /// The day the client paid, `YYYY-MM-DD`. [ADR-0011]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub paid_date: Option<String>,
+    /// Where the invoice was issued.
+    #[serde(default, skip_serializing_if = "Source::is_jimtime")]
+    pub source: Source,
+    /// For an invoice imported from Harvest: what Harvest billed, exactly as
+    /// the client saw it. Authoritative over `lines`, which only record the
+    /// time it covered (Harvest lines can be edited, and discounted). [ADR-0011]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub harvest: Option<HarvestSnapshot>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Copy, PartialEq, Eq, Debug, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum Source {
+    #[default]
+    Jimtime,
+    /// Issued in Harvest, imported by `invoice import-harvest`.
+    Harvest,
+}
+
+impl Source {
+    fn is_jimtime(&self) -> bool {
+        *self == Source::Jimtime
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+pub struct HarvestSnapshot {
+    pub id: u64,
+    pub state: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub subject: Option<String>,
+    pub line_items: Vec<crate::harvest::InvoiceLineItem>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub discount_percent: Option<f64>,
+    pub discount_amount: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax_percent: Option<f64>,
+    pub tax_amount: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tax2_percent: Option<f64>,
+    pub tax2_amount: f64,
 }
 
 /// The client as billed.
@@ -206,6 +251,9 @@ impl Invoice {
             sent: Vec::new(),
             uploads: Vec::new(),
             voided_at: None,
+            paid_date: None,
+            source: Source::Jimtime,
+            harvest: None,
         })
     }
 
@@ -243,6 +291,30 @@ impl Invoice {
             to: self.client.email_to.clone(),
             cc,
             bcc,
+        }
+    }
+
+    /// Issued and not yet paid (nor void).
+    pub fn is_outstanding(&self) -> bool {
+        self.status == Status::Finalized && self.paid_date.is_none()
+    }
+
+    /// `paid 2026-08-01`, `overdue since 2026-10-17`, `open, due 2026-10-17`,
+    /// `not sent`, or `void`, as of `today`.
+    pub fn payment_status(&self, today: NaiveDate) -> String {
+        if self.status == Status::Void {
+            return "void".into();
+        }
+        if let Some(d) = &self.paid_date {
+            return format!("paid {d}");
+        }
+        let overdue = NaiveDate::parse_from_str(&self.due_date, "%Y-%m-%d")
+            .map(|due| due < today)
+            .unwrap_or(false);
+        match (overdue, self.sent.is_empty()) {
+            (true, _) => format!("OVERDUE since {}", self.due_date),
+            (false, true) => format!("not sent, due {}", self.due_date),
+            (false, false) => format!("open, due {}", self.due_date),
         }
     }
 
@@ -411,6 +483,14 @@ fn tokens(fmt: &str) -> Result<Vec<Token>> {
 
 /// Read `(year, seq)` back out of a number, if it fits the format. `036`
 /// fits `{seq:03}`; `INV-9` does not.
+/// `(year, seq)` of a number under the configured format, if it fits.
+pub fn seq_of(config: &Config, number: &str) -> Result<Option<(Option<i32>, u32)>> {
+    Ok(parse_number(
+        &tokens(&config.invoice.number_format)?,
+        number,
+    ))
+}
+
 fn parse_number(tokens: &[Token], number: &str) -> Option<(Option<i32>, u32)> {
     let mut rest = number.trim();
     let (mut year, mut seq) = (None, None);
@@ -548,6 +628,48 @@ mod tests {
         let c = cfg("[invoice]\nnumber_format = \"INV-{seq:04}\"\n");
         let existing = vec![inv("INV-0009", 2025, 9)];
         assert_eq!(next_number(&c, 2026, &existing, &[]).unwrap().0, "INV-0010");
+    }
+
+    #[test]
+    fn payment_status_reads_paid_open_overdue_and_void() {
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let mut i = inv("036", 2026, 36);
+        i.status = Status::Finalized;
+        i.due_date = "2026-10-17".into();
+        assert_eq!(
+            i.payment_status(d("2026-10-01")),
+            "not sent, due 2026-10-17"
+        );
+        i.sent.push(SendEvent {
+            at: "2026-09-17T10:00:00Z".into(),
+            to: vec![],
+            cc: vec![],
+            bcc: vec![],
+        });
+        assert_eq!(i.payment_status(d("2026-10-17")), "open, due 2026-10-17");
+        assert_eq!(
+            i.payment_status(d("2026-10-18")),
+            "OVERDUE since 2026-10-17"
+        );
+        assert!(i.is_outstanding());
+        i.paid_date = Some("2026-10-20".into());
+        assert_eq!(i.payment_status(d("2026-11-01")), "paid 2026-10-20");
+        assert!(!i.is_outstanding());
+        i.status = Status::Void;
+        assert_eq!(i.payment_status(d("2026-11-01")), "void");
+    }
+
+    #[test]
+    fn records_without_the_new_fields_still_load() {
+        // Records written before payment tracking existed.
+        let mut v = serde_json::to_value(inv("2026-001", 2026, 1)).unwrap();
+        let m = v.as_object_mut().unwrap();
+        m.remove("paid_date");
+        m.remove("source");
+        m.remove("harvest");
+        let i: Invoice = serde_json::from_value(v).unwrap();
+        assert_eq!(i.source, Source::Jimtime);
+        assert!(i.paid_date.is_none() && i.harvest.is_none());
     }
 
     #[test]

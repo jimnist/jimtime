@@ -280,11 +280,35 @@ If the email or an upload fails, the invoice stays issued and the error names th
 `--no-send` finalizes without emailing.
 
 ```sh
-jimtime invoice list                 # number, date, client, total, sent/void
+jimtime invoice list                 # number, date, client, total, paid/open/overdue
 jimtime invoice open 2026-004        # the PDF
 jimtime invoice send 2026-004        # email it (again); --to adds a recipient
+jimtime invoice paid 2026-004        # record the payment (--date, or --undo)
 jimtime invoice void 2026-004        # unlock its entries; the number stays used
 ```
+
+```
+$ jimtime invoice list
+NUMBER       ISSUED      CLIENT                            TOTAL  STATUS
+035          2026-08-16  Magic Mind                 2,062.50 USD  paid 2026-09-17 (from Harvest)
+036          2026-09-17  Magic Mind                 3,150.00 USD  open, due 2026-10-17 (from Harvest)
+
+Outstanding: 3,150.00 USD
+```
+
+#### Bringing your Harvest history over
+
+If you invoiced from Harvest before, import that history before you switch Harvest off: [[ADR-0011](docs/adr/0011-harvest-history-and-payments.md)]
+
+```sh
+jimtime invoice import-harvest --dry-run
+jimtime invoice import-harvest
+```
+
+It only reads Harvest.
+Every Harvest invoice becomes a local record with its PDF and paid date, every entry Harvest billed is locked to that invoice so it can never be billed again, and time that only ever lived in Harvest is added to your store.
+Imported records keep Harvest's own line items, discounts and amount, since what the client was billed is not always the tracked hours times the rate.
+It needs the `HARVEST_*` credentials and a `harvest_id` on each client, project and task (which `config migrate` carries over), and it can be re-run to pick up changes, such as an invoice getting paid.
 
 Numbers default to `{year}-{seq:03}` (`2026-004`), restarting each year; set `invoice.number_format` and `invoice.start_seq` to continue an existing sequence.
 Finalizing requires a successful pull when the data repo has a remote, so the next number is always the real next number.
