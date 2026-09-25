@@ -20,7 +20,11 @@ re_export! {
     approve
     unapprove
     report
+    invoice
     harvest
+    cloud
+    config
+    data
 }
 
 #[async_trait::async_trait]

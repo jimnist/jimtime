@@ -3,10 +3,11 @@ use anyhow::Result;
 use clap::Args;
 use std::collections::BTreeMap;
 
+use crate::config::Config;
 use crate::daterange::RangeArgs;
 use crate::selection::FilterArgs;
-use crate::store::Day;
-use crate::view::fmt_hours;
+use crate::store::{Day, Entry};
+use crate::view::{flags, fmt_hours, marker};
 
 /// List entries over a date range or a single day
 #[derive(Args)]
@@ -20,30 +21,43 @@ pub struct Review {
     pending: bool,
 }
 
-struct Row {
-    id: String,
-    hours: f64,
-    billable: bool,
-    approved: bool,
-    needs_review: bool,
-    imported: bool,
-    notes: String,
+/// Per-group and overall counts.
+#[derive(Default)]
+struct Tally {
+    total: f64,
+    billable: f64,
+    unapproved: usize,
+    needs_review: usize,
+    invoiceable: usize,
+    pushable: usize,
 }
 
-impl Row {
-    fn marker(&self) -> char {
-        if self.approved { '○' } else { '●' }
-    }
-    fn eligible(&self) -> bool {
-        self.approved && self.billable && !self.imported
-    }
-    fn flags(&self) -> String {
-        let mut s = String::new();
-        if self.needs_review {
-            s.push_str("  [needs review]");
+impl Tally {
+    fn add(&mut self, e: &Entry) {
+        self.total += e.hours;
+        if e.billable {
+            self.billable += e.hours;
         }
-        if self.imported {
-            s.push_str("  [imported]");
+        self.unapproved += usize::from(!e.approved);
+        self.needs_review += usize::from(e.needs_review);
+        self.invoiceable += usize::from(e.is_invoiceable());
+        self.pushable += usize::from(e.is_pushable(false));
+    }
+
+    fn merge(&mut self, o: &Tally) {
+        self.total += o.total;
+        self.billable += o.billable;
+        self.unapproved += o.unapproved;
+        self.needs_review += o.needs_review;
+        self.invoiceable += o.invoiceable;
+        self.pushable += o.pushable;
+    }
+
+    /// The "ready for the next step" counts. Harvest's only shows when it is on.
+    fn ready(&self, harvest: bool) -> String {
+        let mut s = format!("{} ready to invoice", self.invoiceable);
+        if harvest {
+            s.push_str(&format!(" · {} ready to push", self.pushable));
         }
         s
     }
@@ -52,7 +66,8 @@ impl Row {
 #[async_trait::async_trait]
 impl Command for Review {
     async fn run(&self) -> Result<()> {
-        let mut groups: BTreeMap<(String, String, String), Vec<Row>> = BTreeMap::new();
+        let harvest = Config::load_optional()?.is_some_and(|c| c.harvest.enabled);
+        let mut groups: BTreeMap<String, Vec<(String, Entry)>> = BTreeMap::new();
 
         for date in &self.range.dates()? {
             let Some(day) = Day::load(date)? else { continue };
@@ -65,21 +80,9 @@ impl Command for Review {
                         continue;
                     }
                     groups
-                        .entry((
-                            s.client_name.clone(),
-                            s.project_name.clone(),
-                            s.task_name.clone(),
-                        ))
+                        .entry(s.label())
                         .or_default()
-                        .push(Row {
-                            id: e.id.clone(),
-                            hours: e.hours,
-                            billable: e.billable,
-                            approved: e.approved,
-                            needs_review: e.needs_review,
-                            imported: e.harvest_time_entry_id.is_some(),
-                            notes: e.notes.clone(),
-                        });
+                        .push((date.clone(), e.clone()));
                 }
             }
         }
@@ -91,54 +94,38 @@ impl Command for Review {
             return Ok(());
         }
 
-        let (mut g_total, mut g_billable, mut g_eligible) = (0.0, 0.0, 0usize);
-        for ((client, project, task), rows) in &groups {
-            println!("{client} - {project} - {task}");
-            let mut total = 0.0;
-            let mut billable = 0.0;
-            let (mut unapproved, mut needs_review, mut eligible) = (0usize, 0usize, 0usize);
-            for r in rows {
-                println!("  {}", r.id);
-                let bill = if r.billable { "billable" } else { "non-bill" };
+        let mut grand = Tally::default();
+        for (label, rows) in &groups {
+            println!("{label}");
+            let mut t = Tally::default();
+            for (_, e) in rows {
+                println!("  {}", e.id);
+                let bill = if e.billable { "billable" } else { "non-bill" };
                 println!(
                     "    {} {:>6}h  {:<8}  {}{}",
-                    r.marker(),
-                    fmt_hours(r.hours),
+                    marker(e),
+                    fmt_hours(e.hours),
                     bill,
-                    r.notes,
-                    r.flags()
+                    e.notes,
+                    flags(e)
                 );
-                total += r.hours;
-                if r.billable {
-                    billable += r.hours;
-                }
-                if !r.approved {
-                    unapproved += 1;
-                }
-                if r.needs_review {
-                    needs_review += 1;
-                }
-                if r.eligible() {
-                    eligible += 1;
-                }
+                t.add(e);
             }
             println!(
-                "  Total: {}h · {} unapproved · {} needs-review · {} eligible to push\n",
-                fmt_hours(total),
-                unapproved,
-                needs_review,
-                eligible
+                "  Total: {}h · {} unapproved · {} needs-review · {}\n",
+                fmt_hours(t.total),
+                t.unapproved,
+                t.needs_review,
+                t.ready(harvest)
             );
-            g_total += total;
-            g_billable += billable;
-            g_eligible += eligible;
+            grand.merge(&t);
         }
 
         println!(
-            "Totals: {}h ({}h billable) · {} eligible to push",
-            fmt_hours(g_total),
-            fmt_hours(g_billable),
-            g_eligible
+            "Totals: {}h ({}h billable) · {}",
+            fmt_hours(grand.total),
+            fmt_hours(grand.billable),
+            grand.ready(harvest)
         );
         Ok(())
     }

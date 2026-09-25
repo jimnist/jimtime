@@ -3,8 +3,10 @@ use anyhow::Result;
 use clap::Args;
 use std::collections::HashSet;
 
-use crate::harvest::HarvestApi;
+use crate::config::Config;
 use crate::daterange::RangeArgs;
+use crate::datarepo::Sync;
+use crate::harvest::HarvestApi;
 use crate::selection::FilterArgs;
 use crate::store::Day;
 use crate::view::fmt_hours;
@@ -71,6 +73,17 @@ impl Command for Approve {
         let mut seen: HashSet<String> = HashSet::new();
         let only_mode = !self.only.is_empty();
 
+        // Check the gate before changing anything, so a disabled integration
+        // fails without leaving half the job done.
+        let config = if self.push {
+            let c = Config::load()?;
+            c.require_harvest()?;
+            Some(c)
+        } else {
+            None
+        };
+
+        let sync = Sync::begin("approve", false)?;
         for date in &self.range.dates()? {
             let Some(mut day) = Day::load(date)? else {
                 continue;
@@ -80,7 +93,7 @@ impl Command for Approve {
                 if !self.filter.matches(s) {
                     continue;
                 }
-                let label = format!("{} - {} - {}", s.client_name, s.project_name, s.task_name);
+                let label = s.label();
                 for e in &mut s.entries {
                     seen.insert(e.id.clone());
                     if e.approved {
@@ -124,6 +137,12 @@ impl Command for Approve {
             }
         }
 
+        sync.checkpoint(&format!(
+            "approve: {} {}",
+            self.range.label()?,
+            plural(approved.len())
+        ))?;
+
         if approved.is_empty() && held_review.is_empty() && held_except.is_empty() {
             println!("Nothing to approve for {}.", self.range.label()?);
             return Ok(());
@@ -147,12 +166,14 @@ impl Command for Approve {
 
         // Push only what this run actually approved. Nothing approved means
         // nothing to push, and reaching for credentials would just be noise.
-        if self.push && !approved.is_empty() {
+        if let Some(config) = &config
+            && !approved.is_empty()
+        {
             println!();
             let api = HarvestApi::from_env()?;
-            super::push(&api, &self.range, &self.filter, false).await?;
+            super::push(&api, config, &self.range, &self.filter, false).await?;
         }
-        Ok(())
+        sync.commit(&format!("harvest push: {}", self.range.label()?))
     }
 }
 

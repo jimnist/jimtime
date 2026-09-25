@@ -48,6 +48,23 @@ pub fn today_naive() -> Result<NaiveDate> {
     Ok(Utc::now().with_timezone(&billing_tz()?).date_naive())
 }
 
+/// The current instant in the billing timezone, as RFC 3339 to the second.
+/// Used for the timestamps recorded on invoices.
+pub fn now_rfc3339() -> Result<String> {
+    Ok(Utc::now()
+        .with_timezone(&billing_tz()?)
+        .to_rfc3339_opts(chrono::SecondsFormat::Secs, false))
+}
+
+/// The first and last day of the month containing `d`.
+pub fn month_of(d: NaiveDate) -> (NaiveDate, NaiveDate) {
+    let first = d.with_day(1).expect("day 1 exists");
+    let next = first
+        .checked_add_months(chrono::Months::new(1))
+        .expect("in range");
+    (first, next - Duration::days(1))
+}
+
 /// Parse a `YYYY-MM-DD` string into a `NaiveDate`.
 pub fn parse_naive(s: &str) -> Result<NaiveDate> {
     NaiveDate::parse_from_str(s, "%Y-%m-%d")

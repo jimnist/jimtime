@@ -1,23 +1,36 @@
 # Systems
 
-External systems this app depends on. Document each one under `systems/` as it's
-added - what it's used for, how it's authenticated, and any hard-won encodings
-or gotchas.
+External systems this app depends on.
+Each has a file under `systems/`: what it is used for, how it is authenticated, and the gotchas.
 
-_None documented yet._
+## Git (the data repo)
 
-<!--
-Example:
+`$JIMTIME_HOME` as its own private repo, pulled, committed and pushed around every write, with a custom merge driver for day files.
+Always on when the data home is its own repo; nothing to sign up for.
 
-## Some API
+Read more: `systems/git-data-repo.md`
 
-We call the Some API for X.
+## SMTP
 
-Used for:
+Emailing finalized invoices. Any provider; the password is `$JIMTIME_SMTP_PASSWORD`.
 
-- ...
+Read more: `systems/smtp.md`
 
-Read more:
+## Chrome (headless)
 
-- `systems/some-api.md`
--->
+Printing invoice HTML to PDF. A runtime dependency, found automatically.
+
+Read more: `systems/chrome.md`
+
+## Harvest (optional, off by default)
+
+Pushing approved time entries; reading clients/projects/tasks and the uninvoiced report.
+Env credentials `HARVEST_ACCESS_TOKEN`, `HARVEST_ACCOUNT_ID`.
+
+Read more: `systems/harvest.md`
+
+## Dropbox and Google Drive (optional)
+
+A copy of each finalized invoice PDF in a folder. OAuth with PKCE; refresh tokens in the OS keychain.
+
+Read more: `systems/dropbox.md`, `systems/google-drive.md`
