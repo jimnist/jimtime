@@ -5,15 +5,17 @@ use clap::{Args, Subcommand};
 
 use std::collections::{BTreeMap, HashSet};
 
+use crate::config::Config;
 use crate::daterange::RangeArgs;
+use crate::datarepo::Sync;
 use crate::harvest::HarvestApi;
 use crate::selection::FilterArgs;
-use crate::store::Day;
+use crate::store::{Day, Section};
 use crate::timeutil;
 use crate::view::{fmt_amount, fmt_hours};
 
 /// Query Harvest, show uninvoiced balances, and dry-run or push approved time
-/// entries
+/// entries (optional; enable with `[harvest] enabled = true`)
 #[derive(Args)]
 pub struct Harvest {
     #[command(subcommand)]
@@ -91,6 +93,10 @@ enum HarvestCmd {
 #[async_trait::async_trait]
 impl Command for Harvest {
     async fn run(&self) -> Result<()> {
+        // Off by default, and checked before any credential is looked up.
+        // [ADR-0006]
+        let config = Config::load()?;
+        config.require_harvest()?;
         match &self.cmd {
             HarvestCmd::Projects { all } => {
                 let api = HarvestApi::from_env()?;
@@ -161,7 +167,7 @@ impl Command for Harvest {
                 filter,
                 include_non_billable,
             } => {
-                dry_run(range, filter, *include_non_billable)?;
+                dry_run(&config, range, filter, *include_non_billable)?;
             }
             HarvestCmd::Push {
                 range,
@@ -169,7 +175,9 @@ impl Command for Harvest {
                 include_non_billable,
             } => {
                 let api = HarvestApi::from_env()?;
-                push(&api, range, filter, *include_non_billable).await?;
+                let sync = Sync::begin("harvest push", false)?;
+                push(&api, &config, range, filter, *include_non_billable).await?;
+                sync.commit(&format!("harvest push: {}", range.label()?))?;
             }
             HarvestCmd::Unpush {
                 range,
@@ -177,7 +185,9 @@ impl Command for Harvest {
                 only,
             } => {
                 let api = HarvestApi::from_env()?;
+                let sync = Sync::begin("harvest unpush", false)?;
                 unpush(&api, range, filter, only).await?;
+                sync.commit(&format!("harvest unpush: {}", range.label()?))?;
             }
         }
         Ok(())
@@ -342,7 +352,12 @@ impl Totals {
 }
 
 /// Print the entries that a push would create, without calling the API.
-fn dry_run(range: &RangeArgs, filter: &FilterArgs, include_non_billable: bool) -> Result<()> {
+fn dry_run(
+    config: &Config,
+    range: &RangeArgs,
+    filter: &FilterArgs,
+    include_non_billable: bool,
+) -> Result<()> {
     let dates = range.dates()?;
     println!("Dry run: Harvest import - {}\n", range.label()?);
 
@@ -358,14 +373,11 @@ fn dry_run(range: &RangeArgs, filter: &FilterArgs, include_non_billable: bool) -
                 if !e.is_pushable(include_non_billable) {
                     continue;
                 }
-                println!(
-                    "{date}  {}h  {} - {} - {}",
-                    fmt_hours(e.hours),
-                    s.client_name,
-                    s.project_name,
-                    s.task_name
-                );
+                println!("{date}  {}h  {}", fmt_hours(e.hours), s.label());
                 println!("  id: {}", e.id);
+                if let Err(err) = harvest_ids(config, s) {
+                    println!("  WILL FAIL: {err}");
+                }
                 println!("  notes: {}", e.notes);
                 count += 1;
                 total += e.hours;
@@ -390,6 +402,7 @@ fn dry_run(range: &RangeArgs, filter: &FilterArgs, include_non_billable: bool) -
 /// to each entry immediately so a mid-run failure never re-pushes.
 pub(crate) async fn push(
     api: &HarvestApi,
+    config: &Config,
     range: &RangeArgs,
     filter: &FilterArgs,
     include_non_billable: bool,
@@ -415,7 +428,14 @@ pub(crate) async fn push(
             if !filter.matches(&day.sections[si]) {
                 continue;
             }
-            let (project_id, task_id) = (day.sections[si].project_id, day.sections[si].task_id);
+            let has_pushable = day.sections[si]
+                .entries
+                .iter()
+                .any(|e| e.is_pushable(include_non_billable));
+            if !has_pushable {
+                continue;
+            }
+            let (project_id, task_id) = harvest_ids(config, &day.sections[si])?;
             for ei in 0..day.sections[si].entries.len() {
                 if !day.sections[si].entries[ei].is_pushable(include_non_billable) {
                     continue;
@@ -550,6 +570,35 @@ async fn unpush(
         );
     }
     Ok(())
+}
+
+/// The Harvest project and task ids for a section: the ones recorded on it,
+/// else the ones in config, so ids added to config later still apply.
+fn harvest_ids(config: &Config, s: &Section) -> Result<(u64, u64)> {
+    let project = s.harvest_project_id.or_else(|| {
+        config
+            .clients
+            .get(&s.client)
+            .and_then(|c| c.projects.get(&s.project))
+            .and_then(|p| p.harvest_id)
+    });
+    let task = s
+        .harvest_task_id
+        .or_else(|| config.tasks.get(&s.task).and_then(|t| t.harvest_id));
+    match (project, task) {
+        (Some(p), Some(t)) => Ok((p, t)),
+        (None, _) => bail!(
+            "no Harvest project id for {}: set harvest_id under [clients.{}.projects.{}]",
+            s.label(),
+            s.client,
+            s.project
+        ),
+        (_, None) => bail!(
+            "no Harvest task id for {}: set harvest_id under [tasks.{}]",
+            s.label(),
+            s.task
+        ),
+    }
 }
 
 fn truncate(s: &str, width: usize) -> String {

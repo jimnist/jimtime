@@ -31,7 +31,8 @@ pub fn marker(e: &Entry) -> char {
     if e.approved { '○' } else { '●' }
 }
 
-/// Trailing status flags for an entry, e.g. `  [needs review]  [imported]`.
+/// Trailing status flags for an entry, e.g. `  [needs review]  [imported]`
+/// `  [invoice 2026-001]`.
 pub fn flags(e: &Entry) -> String {
     let mut s = String::new();
     if e.needs_review {
@@ -39,6 +40,9 @@ pub fn flags(e: &Entry) -> String {
     }
     if e.harvest_time_entry_id.is_some() {
         s.push_str("  [imported]");
+    }
+    if let Some(n) = &e.invoice {
+        s.push_str(&format!("  [invoice {n}]"));
     }
     s
 }
@@ -68,10 +72,7 @@ pub fn render_day(day: &Day) -> String {
     for s in &day.sections {
         let (total, billable) = section_hours(s);
         day_total += total;
-        out.push_str(&format!(
-            "\n{} - {} - {}\n",
-            s.client_name, s.project_name, s.task_name
-        ));
+        out.push_str(&format!("\n{}\n", s.label()));
         for e in &s.entries {
             let bill = if e.billable { "billable" } else { "non-bill" };
             out.push_str(&format!(

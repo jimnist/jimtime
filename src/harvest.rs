@@ -112,6 +112,14 @@ page!(ClientsPage, clients, Client);
 page!(ProjectsPage, projects, Project);
 page!(TaskAssignmentsPage, task_assignments, TaskAssignment);
 page!(UninvoicedPage, results, UninvoicedRow);
+page!(InvoicesPage, invoices, InvoiceRef);
+
+/// Just the number of a Harvest invoice.
+#[derive(Deserialize)]
+pub struct InvoiceRef {
+    #[serde(default)]
+    pub number: Option<String>,
+}
 
 impl HarvestApi {
     /// Build a client from environment credentials, failing loudly if unset.
@@ -186,6 +194,18 @@ impl HarvestApi {
     pub async fn task_assignments(&self, project_id: u64) -> Result<Vec<TaskAssignment>> {
         let url = format!("{BASE}/projects/{project_id}/task_assignments?per_page=2000");
         self.paged::<TaskAssignmentsPage, TaskAssignment>(url).await
+    }
+
+    /// Every invoice number issued in Harvest, any state (drafts included:
+    /// a draft already holds its number there).
+    pub async fn invoice_numbers(&self) -> Result<Vec<String>> {
+        let url = format!("{BASE}/invoices?per_page=2000");
+        Ok(self
+            .paged::<InvoicesPage, InvoiceRef>(url)
+            .await?
+            .into_iter()
+            .filter_map(|i| i.number)
+            .collect())
     }
 
     /// The uninvoiced report over an inclusive `YYYY-MM-DD` date range: one row
