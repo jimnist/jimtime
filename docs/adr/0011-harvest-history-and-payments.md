@@ -28,3 +28,4 @@ Worse, until jimtime knows it, time Harvest already billed looks invoiceable her
 - The store becomes the complete billing record, back to the first Harvest entry, and `review` and `report` work across all of it.
 - Imported invoice numbers feed the local numbering, so jimtime continues the sequence even after Harvest is gone.
 - The import can be re-run until Harvest is switched off, picking up state changes (an invoice getting paid).
+  A record is rewritten, and its PDF downloaded again, only when the invoice changed or its PDF is missing: Harvest renders a byte-different PDF on every download, so refreshing unconditionally would commit new binaries on every run.

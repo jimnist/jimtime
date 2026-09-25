@@ -533,7 +533,8 @@ async fn import_harvest(dry_run: bool) -> Result<()> {
     println!("{verb} import from Harvest:");
     let list = |v: &[String]| if v.is_empty() { "none".to_string() } else { v.join(", ") };
     println!("  New invoice records:        {}", list(&r.records_new));
-    println!("  Refreshed invoice records:  {}", list(&r.records_refreshed));
+    println!("  Changed in Harvest:         {}", list(&r.records_refreshed));
+    println!("  Unchanged:                  {}", list(&r.records_unchanged));
     println!("  Entries locked to invoices: {}", r.locked);
     println!("  Entries added, invoiced:    {}", r.backfilled_invoiced);
     println!(

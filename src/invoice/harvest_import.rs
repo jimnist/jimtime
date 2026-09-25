@@ -19,7 +19,10 @@ use crate::store::{Day, Section, day_files, write_atomic};
 #[derive(Default, Debug)]
 pub struct Report {
     pub records_new: Vec<String>,
+    /// Already imported, and changed in Harvest since (e.g. now paid).
     pub records_refreshed: Vec<String>,
+    /// Already imported and unchanged: nothing written.
+    pub records_unchanged: Vec<String>,
     pub drafts_skipped: Vec<String>,
     /// Local entries newly locked to the Harvest invoice that billed them.
     pub locked: usize,
@@ -409,14 +412,6 @@ pub async fn run(config: &Config, api: &HarvestApi, dry_run: bool) -> Result<Rep
     let mut addresses: HashMap<u64, Option<String>> = HashMap::new();
     for hinv in invoices.iter().filter(|i| i.state != "draft") {
         let number = number_of(hinv)?.to_string();
-        if existing.contains_key(&number) {
-            report.records_refreshed.push(number.clone());
-        } else {
-            report.records_new.push(number.clone());
-        }
-        if dry_run {
-            continue;
-        }
         let address = match addresses.get(&hinv.client.id) {
             Some(a) => a.clone(),
             None => {
@@ -438,16 +433,35 @@ pub async fn run(config: &Config, api: &HarvestApi, dry_run: bool) -> Result<Rep
             address,
             existing.get(&number),
         )?;
+        let pdf_path = record.pdf_path()?;
+        // Harvest renders a fresh PDF (new timestamps) on every download, so
+        // only fetch one when the invoice changed or its PDF is missing;
+        // otherwise every re-run would commit five new binaries.
+        match existing.get(&number) {
+            None => report.records_new.push(number.clone()),
+            Some(prior) if same_record(prior, &record) && pdf_path.exists() => {
+                report.records_unchanged.push(number.clone());
+                continue;
+            }
+            Some(_) => report.records_refreshed.push(number.clone()),
+        }
+        if dry_run {
+            continue;
+        }
         let pdf = api
             .invoice_pdf(&domain, &hinv.client_key)
             .await
             .with_context(|| format!("downloading the PDF of Harvest invoice {number}"))?;
-        let pdf_path = record.pdf_path()?;
         write_atomic(&pdf_path, &pdf)?;
         datarepo::note_write(&pdf_path);
         record.save()?;
     }
     Ok(report)
+}
+
+/// Whether two records say the same thing, as written to disk.
+fn same_record(a: &Invoice, b: &Invoice) -> bool {
+    serde_json::to_value(a).ok() == serde_json::to_value(b).ok()
 }
 
 fn find_mut<'a>(day: &'a mut Day, id: &str) -> &'a mut crate::store::Entry {
@@ -591,6 +605,30 @@ mod tests {
         assert_eq!(h.line_items[0].quantity, 2.25, "the line as billed");
         assert_eq!(h.discount_amount, 112.5);
         assert_eq!(r.period_from, "2026-07-24", "no period: the issue date");
+    }
+
+    #[test]
+    fn reimporting_an_unchanged_invoice_builds_the_same_record() {
+        // What keeps a re-run from rewriting (and re-committing) anything.
+        let c = config();
+        let t = te(7, 2.83, Some((99, "034")));
+        let first = record_for(&c, "e", &hinv(337.5), &[(&t, "l7".into())], None, None).unwrap();
+        let again = record_for(
+            &c,
+            "e",
+            &hinv(337.5),
+            &[(&t, "l7".into())],
+            None,
+            Some(&first),
+        )
+        .unwrap();
+        assert!(same_record(&first, &again));
+
+        let mut paid_now = hinv(337.5);
+        paid_now.paid_date = Some("2026-09-25".into());
+        let changed =
+            record_for(&c, "e", &paid_now, &[(&t, "l7".into())], None, Some(&first)).unwrap();
+        assert!(!same_record(&first, &changed));
     }
 
     #[test]
