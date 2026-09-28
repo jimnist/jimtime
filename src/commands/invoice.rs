@@ -38,6 +38,10 @@ struct Scope {
     project: Option<String>,
     #[command(flatten)]
     range: RangeArgs,
+    /// Also Cc this address on this invoice's email, on top of the client's
+    /// email_cc and [email] cc (repeatable; part of the fingerprint)
+    #[arg(long)]
+    cc: Vec<String>,
 }
 
 #[derive(Subcommand)]
@@ -74,6 +78,9 @@ enum InvoiceCmd {
         /// Also send to this address (repeatable)
         #[arg(long)]
         to: Vec<String>,
+        /// Also Cc this address (repeatable)
+        #[arg(long)]
+        cc: Vec<String>,
     },
     /// Void an invoice: its entries become invoiceable again; the number stays used
     Void { number: String },
@@ -118,7 +125,7 @@ impl Command for Invoice {
                 no_send,
                 no_open,
             } => finalize(scope, confirm.as_deref(), *no_send, *no_open).await,
-            InvoiceCmd::Send { number, to } => send(number, to).await,
+            InvoiceCmd::Send { number, to, cc } => send(number, to, cc).await,
             InvoiceCmd::Void { number } => void(number),
             InvoiceCmd::Paid { number, date, undo } => paid(number, date.as_deref(), *undo),
             InvoiceCmd::List { client } => list(client.as_deref()),
@@ -179,13 +186,28 @@ fn build(config: &Config, scope: &Scope) -> Result<inv::Invoice> {
             if sel.harvest_linked == 1 { "was" } else { "were" },
         );
     }
-    inv::Invoice::build(
+    let mut i = inv::Invoice::build(
         config,
         &scope.client,
         sel.lines,
         timeutil::today_naive()?,
         (from, to),
-    )
+    )?;
+    // A one-off Cc joins the snapshot, so it is in the fingerprint and on the
+    // record like the configured ones.
+    i.client.email_cc.extend(scope.cc.iter().cloned());
+    Ok(i)
+}
+
+/// Quote a value for the shell when it needs it (`Name <a@b.c>` does).
+fn shell_quote(s: &str) -> String {
+    if s.chars()
+        .all(|c| c.is_ascii_alphanumeric() || "@._+-".contains(c))
+    {
+        s.to_string()
+    } else {
+        format!("'{}'", s.replace('\'', r"'\''"))
+    }
 }
 
 fn summary(config: &Config, i: &inv::Invoice, send: bool) {
@@ -264,7 +286,7 @@ async fn draft(scope: &Scope, no_open: bool) -> Result<()> {
         render::open(&out)?;
     }
     println!(
-        "\nNothing was saved. To finalize exactly this invoice:\n  jimtime invoice finalize --client {}{} --from {} --to {} --confirm {fp}",
+        "\nNothing was saved. To finalize exactly this invoice:\n  jimtime invoice finalize --client {}{} --from {} --to {}{} --confirm {fp}",
         scope.client,
         scope
             .project
@@ -273,6 +295,11 @@ async fn draft(scope: &Scope, no_open: bool) -> Result<()> {
             .unwrap_or_default(),
         i.period_from,
         i.period_to,
+        scope
+            .cc
+            .iter()
+            .map(|a| format!(" --cc {}", shell_quote(a)))
+            .collect::<String>(),
     );
     Ok(())
 }
@@ -301,7 +328,7 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
     i.seq = seq;
     i.status = Status::Finalized;
     if let Some(m) = &mailer {
-        m.check_recipients(&config, &i, &[])?;
+        m.check_recipients(&config, &i)?;
     }
     let fp = i.fingerprint(&config);
 
@@ -350,9 +377,12 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
     println!("\nFinalized invoice {number}: {}", pdf.display());
 
     if let Some(m) = &mailer {
-        match m.send(&config, &i, &pdf, &[]).await {
+        match m.send(&config, &i, &pdf).await {
             Ok(ev) => {
                 println!("Emailed to {}", ev.to.join(", "));
+                if !ev.cc.is_empty() {
+                    println!("  Cc: {}", ev.cc.join(", "));
+                }
                 i.sent.push(ev);
                 i.save()?;
             }
@@ -386,7 +416,7 @@ async fn upload(config: &Config, i: &mut inv::Invoice, pdf: &Path) -> Result<()>
     Ok(())
 }
 
-async fn send(number: &str, extra_to: &[String]) -> Result<()> {
+async fn send(number: &str, extra_to: &[String], extra_cc: &[String]) -> Result<()> {
     let config = Config::load()?;
     let mailer = Mailer::from_config(&config)?;
     let sync = Sync::begin("invoice send", false)?;
@@ -394,10 +424,17 @@ async fn send(number: &str, extra_to: &[String]) -> Result<()> {
     if i.status == Status::Void {
         bail!("invoice {number} is void");
     }
-    mailer.check_recipients(&config, &i, extra_to)?;
+    // One-off recipients go on this email only; the send event records them.
+    let mut outgoing = i.clone();
+    outgoing.client.email_to.extend(extra_to.iter().cloned());
+    outgoing.client.email_cc.extend(extra_cc.iter().cloned());
+    mailer.check_recipients(&config, &outgoing)?;
     let pdf = i.pdf_path()?;
-    let ev = mailer.send(&config, &i, &pdf, extra_to).await?;
+    let ev = mailer.send(&config, &outgoing, &pdf).await?;
     println!("Emailed invoice {number} to {}", ev.to.join(", "));
+    if !ev.cc.is_empty() {
+        println!("  Cc: {}", ev.cc.join(", "));
+    }
     i.sent.push(ev);
     i.save()?;
     sync.commit(&format!("invoice: {number} sent"))

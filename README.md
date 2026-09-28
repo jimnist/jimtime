@@ -129,6 +129,7 @@ name = "Meetings"
 name = "Acme Corp"
 currency = "USD"
 email_to = ["billing@acme.example"]
+email_cc = ["controller@acme.example"]   # optional
 
 [clients.acme.projects.website]
 name = "Website"
@@ -146,6 +147,7 @@ host = "smtp.fastmail.com"
 port = 465               # 587 with security = "starttls"
 username = "you@example.com"
 from = "Your Name <you@example.com>"
+cc = ["books@example.com"]         # optional: Cc on every invoice
 bcc = ["you@example.com"]
 ```
 
@@ -278,11 +280,13 @@ Uploaded to dropbox: /Invoices/Invoice 2026-004.pdf
 On approval it assigns the next number, writes the invoice record (`invoices/YYYY/<number>.json`, a full snapshot) and the PDF, locks each entry to that number, commits and pushes, emails the PDF, and uploads it to any configured cloud folder.
 If the email or an upload fails, the invoice stays issued and the error names the retry: `invoice send <number>` or `cloud upload <number>`.
 `--no-send` finalizes without emailing.
+An invoice goes to the client's `email_to`, Cc'd to its `email_cc` and to `[email] cc`, and Bcc'd to `[email] bcc`; add a one-off Cc with `--cc <address>` on `draft` and `finalize` (it is part of the fingerprint, so what you approved is who gets it).
+An address listed in more than one place gets the email once, in the most visible field.
 
 ```sh
 jimtime invoice list                 # number, date, client, total, paid/open/overdue
 jimtime invoice open 2026-004        # the PDF
-jimtime invoice send 2026-004        # email it (again); --to adds a recipient
+jimtime invoice send 2026-004        # email it (again); --to / --cc add recipients
 jimtime invoice paid 2026-004        # record the payment (--date, or --undo)
 jimtime invoice void 2026-004        # unlock its entries; the number stays used
 ```

@@ -85,6 +85,9 @@ fn check() -> Result<()> {
                 client.email_to.join(", ")
             }
         );
+        if !client.email_cc.is_empty() {
+            println!("           cc: {}", client.email_cc.join(", "));
+        }
         for (pk, p) in &client.projects {
             let rate = p
                 .rate
@@ -106,6 +109,14 @@ fn check() -> Result<()> {
             .map(|e| format!("{}:{} as {}", e.host, e.port, e.username))
             .unwrap_or_else(|| "not configured".into())
     );
+    if let Some(e) = &c.email {
+        if !e.cc.is_empty() {
+            println!("           cc on every invoice: {}", e.cc.join(", "));
+        }
+        if !e.bcc.is_empty() {
+            println!("           bcc on every invoice: {}", e.bcc.join(", "));
+        }
+    }
     let mut cloud = Vec::new();
     if c.cloud.dropbox.is_some() {
         cloud.push("dropbox");
@@ -256,6 +267,7 @@ fn render_migrated(legacy: &Legacy) -> (String, Keys) {
                 "\n[clients.{ck}]\nname = {}\ncurrency = \"USD\"\n\
                  # address = \"\"\"\n# 1 Client Way\n# City, ST 00000\n# \"\"\"\n\
                  # email_to = [\"billing@example.com\"]\n\
+                 # email_cc = [\"controller@example.com\"]\n\
                  harvest_id = {}\n",
                 q(&r.client_name),
                 r.client_id
@@ -338,6 +350,7 @@ name = ""
 # security = "tls"                      # or "starttls" (port 587)
 # username = "you@example.com"
 # from = "Your Name <you@example.com>"
+# cc = ["books@example.com"]            # Cc on every invoice email
 # bcc = ["you@example.com"]
 # The password is $JIMTIME_SMTP_PASSWORD.
 
@@ -378,6 +391,7 @@ name = "Your Name"
 # security = "tls"                      # or "starttls" (port 587)
 # username = "you@example.com"
 # from = "Your Name <you@example.com>"
+# cc = ["books@example.com"]            # Cc on every invoice email
 # bcc = ["you@example.com"]
 # The password is $JIMTIME_SMTP_PASSWORD.
 
@@ -394,6 +408,7 @@ name = "Meetings"
 name = "Acme Corp"
 currency = "USD"
 email_to = ["billing@acme.example"]
+# email_cc = ["controller@acme.example"]
 # address = """
 # 1 Acme Way
 # """
