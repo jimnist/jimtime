@@ -4,18 +4,20 @@
 [![Release](https://img.shields.io/github/v/release/jimnist/jimtime?include_prereleases&sort=semver)](https://github.com/jimnist/jimtime/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Track billable time per git repo, review and approve it, then push the approved entries to [Harvest](https://www.getharvest.com/).
+Track billable time per git repo, review and approve it, then invoice it: a PDF from your own HTML template, emailed to the client after you have looked at it.
+Pushing to [Harvest](https://www.getharvest.com/) is there too, optional and off by default.
 
 Run `jimtime` from inside any git repo.
-It maps that repo to a Harvest client, project, and task, and appends the entry to a central, human-readable store.
-Nothing reaches Harvest until you approve it.
+It maps that repo to a client and project, and appends the entry to a central, human-readable store that is its own private git repo, committed and pushed on every change.
+Nothing is billed until you approve it, and no invoice is sent until you have seen it.
 
 ```sh
 $ cd ~/code/client/acme
 $ jimtime add --hours 1.25 --notes "Implemented webhook retry handling"
-$ jimtime review --week --pending
-$ jimtime approve --week
-$ jimtime harvest push --week
+$ jimtime review --month --pending
+$ jimtime approve --month
+$ jimtime invoice draft --client acme --last-month
+$ jimtime invoice finalize --client acme --last-month
 ```
 
 ## Why
@@ -23,15 +25,16 @@ $ jimtime harvest push --week
 Timers get forgotten and web forms get skipped.
 The repo you are working in already knows which client you are billing, so `jimtime` uses that as the key and keeps the friction down to one command at the end of a chunk of work.
 
-Three properties make it safe to point at a real invoice:
+A few properties make it safe to point at a real invoice:
 
 - **The store is the source of truth.**
-  Time lives as one JSON file per day, diffable and committable to a private git repo.
-  Harvest is a downstream destination, not the record. [[ADR-0001](docs/adr/0001-structured-store-is-source-of-truth.md)]
+  Time lives as one JSON file per day, diffable, in a private git repo that every change is committed and pushed to. [[ADR-0001](docs/adr/0001-structured-store-is-source-of-truth.md), [ADR-0009](docs/adr/0009-data-home-is-an-auto-synced-git-repo.md)]
 - **Approval is an explicit, per-entry human gate.**
-  Nothing is auto-approved, and only approved, billable, not-yet-imported entries are eligible to push. [[ADR-0004](docs/adr/0004-per-entry-approval.md)]
-- **Pushes are deduplicated.**
-  Each entry records the Harvest id it created, so re-running a push never double-bills.
+  Nothing is auto-approved, and only approved, billable time can be invoiced or pushed. [[ADR-0004](docs/adr/0004-per-entry-approval.md)]
+- **What you approve is what is sent.**
+  An invoice is drafted, looked at, and only then finalized; a fingerprint makes sure nothing changed in between. [[ADR-0008](docs/adr/0008-invoice-lifecycle.md)]
+- **Nothing is billed twice.**
+  An invoiced entry is locked to its invoice number, and a pushed one records its Harvest id, so re-running either can never double-bill.
 
 ## Install
 
@@ -42,104 +45,134 @@ cargo install --git https://github.com/jimnist/jimtime
 ```
 
 Requires Rust 1.85 or newer.
-There is nothing to install beyond that: the Harvest client uses rustls, so
-there is no OpenSSL or other system library to hunt down first.
-The binary runs in the caller's working directory, so no shell alias or wrapper
-is needed.
+There is nothing to install beyond that: TLS uses rustls, so there is no OpenSSL or other system library to hunt down first.
+The binary runs in the caller's working directory, so no shell alias or wrapper is needed.
 If you later change the code, the installed binary does not update itself.
 See [Running your changes](#running-your-changes).
 
-Prebuilt binaries on the [Releases page](https://github.com/jimnist/jimtime/releases)
-are **macOS only** (Apple Silicon and Intel).
-This is a personal tool and that is the platform it is used on, so building
-binaries for targets nobody downloads is not worth the CI time.
+Rendering invoice PDFs needs Chrome, Chromium, Brave or Edge installed; jimtime prints with it headlessly. [[ADR-0007](docs/adr/0007-local-invoices-from-html-templates.md)]
+
+Prebuilt binaries on the [Releases page](https://github.com/jimnist/jimtime/releases) are **macOS only** (Apple Silicon and Intel).
+This is a personal tool and that is the platform it is used on, so building binaries for targets nobody downloads is not worth the CI time.
 On any other platform, `cargo install` above is the supported path.
 
 This tool is also opinionated about a workflow that happens to be mine.
-If yours differs, the intended use is to fork it and make it yours: the code is
-small (roughly 2,000 lines), the domain language is written down in
-[`CONTEXT.md`](CONTEXT.md), and the decisions worth arguing with are in
-[`docs/adr/`](docs/adr/).
-Adding your own platform back to the release matrix is a few lines in
-[`.github/workflows/releases.yml`](.github/workflows/releases.yml).
+If yours differs, the intended use is to fork it and make it yours: the domain language is written down in [`CONTEXT.md`](CONTEXT.md), and the decisions worth arguing with are in [`docs/adr/`](docs/adr/).
+Adding your own platform back to the release matrix is a few lines in [`.github/workflows/releases.yml`](.github/workflows/releases.yml).
 
 ## Setup
 
 ### 1. Environment
 
-`jimtime` is configured entirely through the environment.
-No config file holds secrets, and no credentials are ever written to disk. [[ADR-0003](docs/adr/0003-credentials-from-environment-only.md)]
-
-Add these to your shell profile:
+Secrets come only from the environment (or, for cloud logins, the OS keychain), never from a file. [[ADR-0003](docs/adr/0003-credentials-from-environment-only.md)]
+Add what you use to your shell profile:
 
 ```sh
-# Where time data lives: the store plus the repo-to-Harvest mapping.
+# Where your data lives: the store, the config, and invoices.
 # If unset, falls back to the XDG data dir (~/.local/share/jimtime).
-export JIMTIME_HOME="$HOME/time-tracking"
+export JIMTIME_HOME="$HOME/code/jimtime-data"
 
-# Harvest credentials. Create a Personal Access Token at
-# https://id.getharvest.com/developers
-export HARVEST_ACCESS_TOKEN="..."
-export HARVEST_ACCOUNT_ID="..."
+# Emailing invoices: your SMTP (app) password.
+export JIMTIME_SMTP_PASSWORD="..."
 
 # Optional. The timezone billing days are anchored to, as an IANA name.
 # Defaults to America/Los_Angeles.
 # export JIMTIME_TZ="Europe/Berlin"
 
-# Optional. Harvest asks that API clients identify themselves.
-# export HARVEST_USER_AGENT="jimtime (you@example.com)"
+# Only when using Harvest (harvest.toml). Create a token at https://id.getharvest.com/developers
+# export HARVEST_ACCESS_TOKEN="..."
+# export HARVEST_ACCOUNT_ID="..."
+
+# Only with Google Drive uploads. See docs/agents/systems/google-drive.md
+# export JIMTIME_GDRIVE_CLIENT_SECRET="..."
 ```
 
-Pointing `JIMTIME_HOME` at a private git repo is the recommended setup: your billing record then has a full history.
+### 2. The data repo
 
-### 2. Map your repos to Harvest
-
-The mapping is non-secret and lives at `$JIMTIME_HOME/config/harvest-projects.json`.
-Look up the real ids first:
+Make `JIMTIME_HOME` its own private git repo and jimtime keeps it committed and pushed:
 
 ```sh
-jimtime harvest clients              # client ids
-jimtime harvest projects             # project ids and their client
-jimtime harvest tasks --project ID   # tasks assigned to a project
+# create an empty private repo (e.g. jimtime-data) on your git host, then:
+jimtime data init --remote git@github.com:you/jimtime-data.git
 ```
 
-Then write the file:
+On an empty `JIMTIME_HOME` this clones the repo; on one with data it makes it a repo and pushes.
+From then on every command that writes pulls first and commits and pushes after, so a second machine is just `data init --remote` on an empty directory.
+Offline is fine: the commit stays local and the next command pushes it.
+If two machines change the same day, a merge driver combines them entry by entry, and stops rather than guesses on a real conflict. [[ADR-0009](docs/adr/0009-data-home-is-an-auto-synced-git-repo.md)]
+`jimtime data status` shows where it stands.
 
-```json
-{
-  "repos": [
-    {
-      "repo_path": "/Users/you/code/client/acme",
-      "client_id": 123,
-      "client_name": "Acme",
-      "project_id": 234,
-      "project_name": "Billing Portal",
-      "default_task_id": 345,
-      "default_task_name": "Development",
-      "billable": true
-    }
-  ],
-  "aliases": {
-    "meetings": { "task_id": 346, "task_name": "Meetings" }
-  }
-}
+jimtime will not sync a data home that sits inside some other repo; `data status` prints the `git subtree split` recipe for moving it out with its history.
+
+### 3. Config
+
+Everything else lives in `$JIMTIME_HOME/config/jimtime.toml`.
+`jimtime config init` writes a commented starter:
+
+```toml
+[business]
+name = "Your Name"
+email = "you@example.com"
+address = """
+123 Main St
+Portland, OR 97201
+"""
+payment_instructions = "ACH to ..., or pay at https://..."
+
+[tasks.development]
+name = "Development"
+
+[tasks.meetings]
+name = "Meetings"
+
+[clients.acme]
+name = "Acme Corp"
+currency = "USD"
+email_to = ["billing@acme.example"]
+email_cc = ["controller@acme.example"]   # optional
+
+[clients.acme.projects.website]
+name = "Website"
+rate = 150.0
+task_rates = { meetings = 100.0 }
+default_task = "development"
+
+[[repos]]
+path = "~/code/acme/website"
+client = "acme"
+project = "website"
+
+[email]
+host = "smtp.fastmail.com"
+port = 465               # 587 with security = "starttls"
+username = "you@example.com"
+from = "Your Name <you@example.com>"
+cc = ["books@example.com"]         # optional: Cc on every invoice
+bcc = ["you@example.com"]
 ```
 
-`repo_path` is the repo's `git rev-parse --show-toplevel`, compared canonically.
-One repo maps to one client and project.
-`aliases` are reusable shorthands for non-default tasks, used as `jimtime add --task meetings`.
+Clients, projects and tasks are identified by their keys (`acme`, `website`, `meetings`). [[ADR-0006](docs/adr/0006-harvest-is-optional.md)]
+`repos[].path` is the repo's `git rev-parse --show-toplevel`, compared canonically.
+One repo maps to one client and project; `--task <key>` picks a non-default task.
+Rates are hourly, per project, with optional per-task overrides, in the client's currency.
+`jimtime config check` validates it and summarizes what it found, and a typo'd key or a mapping to an unknown project fails at load, not mid-invoice.
 
-Confirm it resolved:
+Upgrading from the Harvest-only version?
+`jimtime config migrate` converts `harvest-projects.json` into `jimtime.toml`, keeps your task aliases as keys and your Harvest ids, and rewrites the day files to match, in one commit.
+Everything Harvest goes to its own `config/harvest.toml`: pushing (left **off**), numbering, and the Harvest ids of your clients, projects and tasks.
+Add `rate`s and `[business]` to invoice, or set `enabled = true` in harvest.toml to keep pushing.
+Run it again on a jimtime.toml from before harvest.toml existed and it moves the Harvest settings out, editing the file in place so your comments and edits stay.
+
+Confirm a repo resolves:
 
 ```
-$ jimtime status
-Current repo:     /Users/you/code/client/acme
-Mapped client:    Acme
-Mapped project:   Billing Portal
-Default task:     Development
+$ jimtime map
+Repo:             /Users/you/code/acme/website
+Client:           Acme Corp (acme)
+Project:          Website (website)
+Default task:     Development (development)
 Billable default: yes
-Billing timezone: America/Los_Angeles
-Today's store:    /Users/you/time-tracking/entries/2026/08/2026-08-17.json
+Rate:             150 USD/h
 ```
 
 ## The workflow
@@ -156,7 +189,7 @@ jimtime add --hours 0.5 --notes "Weekly sync" --task meetings
 
 Use `--hours` for decimal hours or `--from`/`--to` for real clock times.
 `--needs-review` marks an entry as an estimate, which holds it back from bulk approval until you look at it.
-`--date YYYY-MM-DD` backfills an earlier day, and `--billable no` overrides the mapping's default.
+`--date YYYY-MM-DD` backfills an earlier day, and `--billable no` overrides the project's default.
 
 ### Review
 
@@ -164,22 +197,22 @@ Use `--hours` for decimal hours or `--from`/`--to` for real clock times.
 $ jimtime review --today
 Review: 2026-08-17
 
-Acme - Billing Portal - Development
-  2026-08-17-acme-billing-portal-development-001
+Acme Corp - Website - Development
+  2026-08-17-acme-corp-website-development-001
     ●   1.25h  billable  Implemented webhook retry handling
-  2026-08-17-acme-billing-portal-development-002
+  2026-08-17-acme-corp-website-development-002
     ●   1.50h  billable  Reviewed the invoice sync PR  [needs review]
-  Total: 2.75h · 2 unapproved · 1 needs-review · 0 eligible to push
+  Total: 2.75h · 2 unapproved · 1 needs-review · 0 ready to invoice
 
-Acme - Billing Portal - Meetings
-  2026-08-17-acme-billing-portal-meetings-001
+Acme Corp - Website - Meetings
+  2026-08-17-acme-corp-website-meetings-001
     ●   0.50h  billable  Weekly sync
-  Total: 0.50h · 1 unapproved · 0 needs-review · 0 eligible to push
+  Total: 0.50h · 1 unapproved · 0 needs-review · 0 ready to invoice
 
-Totals: 3.25h (3.25h billable) · 0 eligible to push
+Totals: 3.25h (3.25h billable) · 0 ready to invoice
 ```
 
-`●` is unapproved and `○` is approved.
+`●` is unapproved and `○` is approved; `[invoice 2026-004]` and `[imported]` mark entries already billed or pushed.
 Add `--pending` to list only what is outstanding.
 Each entry prints its stable id, which is what `approve --only` and `--except` take.
 
@@ -191,11 +224,11 @@ Approval is the human gate, and it is per entry.
 ```
 $ jimtime approve --today
 Approved 2 entries:
-  2026-08-17  1.25h  Acme - Billing Portal - Development  (2026-08-17-acme-billing-portal-development-001)
-  2026-08-17  0.50h  Acme - Billing Portal - Meetings  (2026-08-17-acme-billing-portal-meetings-001)
+  2026-08-17  1.25h  Acme Corp - Website - Development  (2026-08-17-acme-corp-website-development-001)
+  2026-08-17  0.50h  Acme Corp - Website - Meetings  (2026-08-17-acme-corp-website-meetings-001)
 
 Held 1 entry flagged needs-review (approve with --include-needs-review, or --only <id>):
-  2026-08-17  1.50h  Acme - Billing Portal - Development  (2026-08-17-acme-billing-portal-development-002)
+  2026-08-17  1.50h  Acme Corp - Website - Development  (2026-08-17-acme-corp-website-development-002)
 ```
 
 ```sh
@@ -206,19 +239,131 @@ jimtime unapprove --only <id>                 # take one back
 ```
 
 `unapprove` mirrors `approve`: it sweeps the range, honors `--except`, and takes `--only` to act on exactly the ids you name.
-It skips entries already pushed to Harvest; use `jimtime harvest unpush` first to unlink those, then unapprove.
+It skips entries already on an invoice (void the invoice first) or pushed to Harvest (`harvest unpush` first).
 Both commands also narrow by `--client`, `--project`, or `--repo`.
 
-If you always push straight after approving, `--push` does both in one step:
+### Invoice
 
-```sh
-jimtime approve --today --push
+An invoice bills one client's approved, billable, not-yet-invoiced time over a period.
+Draft it first. It renders the PDF, opens it, and saves nothing:
+
+```
+$ jimtime invoice draft --client acme --last-month
+Invoice DRAFT for Acme Corp (acme)
+  Period:      2026-08-01 to 2026-08-31
+  Issued/due:  2026-09-01 / 2026-10-01
+  Lines:       12 entries, 18.25h
+  Total:       $2,662.50 USD
+  Email to:    billing@acme.example
+  Bcc:         you@example.com
+  Fingerprint: 161ad9998023
+
+Preview: .../invoices/.drafts/acme-draft.pdf
+
+Nothing was saved. To finalize exactly this invoice:
+  jimtime invoice finalize --client acme --from 2026-08-01 --to 2026-08-31 --confirm 161ad9998023
 ```
 
-It is opt-in rather than the default because the two acts differ in kind: approving is local and reversible, pushing is a write to a billing system.
-Only what that run actually approved is pushed, and non-billable entries are approved but left where they are.
+It also says what it left out: unapproved or needs-review time in the period, and any entries also pushed to Harvest, where invoicing from both would double-bill.
 
-### Push
+Then finalize.
+In a terminal it shows the numbered PDF and asks; from a script or Claude Code it needs the draft's `--confirm <fingerprint>`, and refuses if what would be billed has changed since:
+
+```
+$ jimtime invoice finalize --client acme --last-month
+...
+Finalize invoice 2026-004 and email it? [y/N] y
+
+Finalized invoice 2026-004: .../invoices/2026/2026-004.pdf
+Emailed to billing@acme.example
+Uploaded to dropbox: /Invoices/Invoice 2026-004.pdf
+```
+
+On approval it assigns the next number, writes the invoice record (`invoices/YYYY/<number>.json`, a full snapshot) and the PDF, locks each entry to that number, commits and pushes, emails the PDF, and uploads it to any configured cloud folder.
+If the email or an upload fails, the invoice stays issued and the error names the retry: `invoice send <number>` or `cloud upload <number>`.
+`--no-send` finalizes without emailing.
+An invoice goes to the client's `email_to`, Cc'd to its `email_cc` and to `[email] cc`, and Bcc'd to `[email] bcc`; add a one-off Cc with `--cc <address>` on `draft` and `finalize` (it is part of the fingerprint, so what you approved is who gets it).
+An address listed in more than one place gets the email once, in the most visible field.
+
+```sh
+jimtime invoice list                 # number, date, client, total, paid/open/overdue
+jimtime invoice open 2026-004        # the PDF
+jimtime invoice send 2026-004        # email it (again); --to / --cc add recipients
+jimtime invoice paid 2026-004        # record the payment (--date, or --undo)
+jimtime invoice void 2026-004        # unlock its entries; the number stays used
+```
+
+```
+$ jimtime invoice list
+NUMBER       ISSUED      CLIENT                            TOTAL  STATUS
+035          2026-08-16  Magic Mind                 2,062.50 USD  paid 2026-09-17 (from Harvest)
+036          2026-09-17  Magic Mind                 3,150.00 USD  open, due 2026-10-17 (from Harvest)
+
+Outstanding: 3,150.00 USD
+```
+
+#### Bringing your Harvest history over
+
+If you invoiced from Harvest before, import that history before you switch Harvest off: [[ADR-0011](docs/adr/0011-harvest-history-and-payments.md)]
+
+```sh
+jimtime invoice import-harvest --dry-run
+jimtime invoice import-harvest
+```
+
+It only reads Harvest.
+Every Harvest invoice becomes a local record with its PDF and paid date, every entry Harvest billed is locked to that invoice so it can never be billed again, and time that only ever lived in Harvest is added to your store.
+Imported records keep Harvest's own line items, discounts and amount, since what the client was billed is not always the tracked hours times the rate.
+It needs the `HARVEST_*` credentials and the Harvest ids in harvest.toml (which `config migrate` writes), and it can be re-run to pick up changes, such as an invoice getting paid.
+
+Numbers default to `{year}-{seq:03}` (`2026-004`), restarting each year; set `invoice.number_format` and `invoice.start_seq` to continue an existing sequence.
+Finalizing requires a successful pull when the data repo has a remote, so the next number is always the real next number.
+
+Coming from Harvest invoicing, carry its numbers on instead:
+
+```toml
+# jimtime.toml
+[invoice]
+number_format = "{seq:03}"   # match Harvest's: 036 -> 037
+
+# harvest.toml
+numbering = true
+```
+
+`draft` and `finalize` then read your Harvest invoice numbers (read-only, with the `HARVEST_*` credentials, whether or not pushing is enabled) and continue past the highest of Harvest's and jimtime's, so an invoice issued in Harvest during the switch can never be duplicated.
+The draft prints the number finalize will use, and finalize refuses to run if it cannot read Harvest.
+
+#### Templates
+
+The built-in template is a clean US Letter layout: a summary by project and task, the amount due and payment instructions, then the time detail with a page footer.
+To make it yours, copy [`src/invoice/default.html`](src/invoice/default.html) into `$JIMTIME_HOME/config/templates/`, and set `invoice.template = "templates/invoice.html"` (or `template` on one client).
+It is plain HTML and CSS with [MiniJinja](https://docs.rs/minijinja) (Jinja2) tags; page size and margins come from CSS `@page`, and relative links such as a logo resolve next to the template.
+The context is `invoice`, `business`, `client`, `lines` (one per entry), `groups` (per project/task/rate), `currency_symbol` and `draft`, with filters `money`, `hours` and `css_string`.
+The email subject and body under `[email]` are templates with the same context.
+
+### Push to Harvest (optional)
+
+Harvest's settings live in `config/harvest.toml`, beside jimtime.toml:
+
+```toml
+enabled = true      # push time to Harvest (off by default)
+numbering = false   # continue Harvest's invoice numbers
+
+# Tasks are based on Harvest's tasks. jimtime knows the union of the tasks
+# here and in jimtime.toml.
+[tasks.development]
+id = 345
+name = "Development"
+
+[clients.acme]
+id = 123
+
+[clients.acme.projects.website]
+id = 234
+```
+
+Keys are jimtime's (`acme`, `website`, `development`); the ids are Harvest's.
+`jimtime harvest clients | projects | tasks --project ID` looks them up.
 
 Always dry-run first.
 It makes no API calls and needs no credentials:
@@ -227,69 +372,65 @@ It makes no API calls and needs no credentials:
 $ jimtime harvest dry-run --today
 Dry run: Harvest import - 2026-08-17
 
-2026-08-17  1.25h  Acme - Billing Portal - Development
-  id: 2026-08-17-acme-billing-portal-development-001
+2026-08-17  1.25h  Acme Corp - Website - Development
+  id: 2026-08-17-acme-corp-website-development-001
   notes: Implemented webhook retry handling
-2026-08-17  0.50h  Acme - Billing Portal - Meetings
-  id: 2026-08-17-acme-billing-portal-meetings-001
-  notes: Weekly sync
 
-Total eligible: 2 entries, 1.75h
+Total eligible: 1 entry, 1.25h
 No entries were pushed.
 ```
 
 ```sh
-jimtime harvest push --week   # creates real entries in Harvest
+jimtime harvest push --week      # creates real entries in Harvest
+jimtime approve --today --push   # approve and push in one step
+jimtime harvest unpush --today   # delete from Harvest, unlink locally
 ```
 
-Push sends approved, billable, not-yet-imported entries and saves each returned Harvest id back to the store immediately, so a re-run skips them.
-Pass `--include-non-billable` to send the rest.
+Push sends approved, billable, not-yet-imported entries and saves each returned Harvest id back immediately, so a re-run skips them.
 Hours are pushed exactly as stored, with no rounding.
+`approve --push` is opt-in because approving is local and reversible and pushing is not. [[ADR-0005](docs/adr/0005-approve-and-push-stay-separate.md)]
+`unpush` deletes the Harvest entry and clears the link; Harvest refuses to delete an invoiced or locked entry, and those stay linked.
+`jimtime harvest uninvoiced` shows what Harvest says each client owes, computed from the rates set there.
 
-To take a push back:
+### Cloud copies of invoices (optional)
+
+Git holds and syncs everything; Google Drive and Dropbox only get a copy of each finalized invoice PDF, in a folder you can browse or share. [[ADR-0010](docs/adr/0010-invoice-pdfs-to-cloud-folders.md)]
+
+```toml
+[cloud.dropbox]
+app_key = "..."          # your own Dropbox app
+folder = "/Invoices"
+
+[cloud.google_drive]
+client_id = "....apps.googleusercontent.com"
+folder = "Business/Invoices"
+```
 
 ```sh
-jimtime harvest unpush --today            # delete from Harvest, unlink locally
-jimtime harvest unpush --only <id>        # just one
+jimtime cloud login dropbox        # one-time browser login
+jimtime cloud login google-drive
+jimtime cloud status
 ```
 
-`unpush` deletes the Harvest time entry and clears the local link, so the entry becomes pushable again and `unapprove` will accept it.
-Harvest refuses to delete an entry that has been invoiced or locked; those stay linked and the command reports the failure rather than lying about it.
-Unpushing does not unapprove - run `unapprove` after if that is what you meant.
+The login stores a refresh token in the OS keychain, never on disk.
+Creating the Dropbox app and the Google OAuth client is a one-time step, described in [`docs/agents/systems/`](docs/agents/systems/).
 
 ### Report
 
-`jimtime report --week` writes a markdown table you can paste into an invoice or a status update, grouped by client, project, and task, with subtotals and a grand total.
+`jimtime report --week` writes a markdown table you can paste into a status update, grouped by client, project, and task, with subtotals and a grand total.
 Add `--billable-only` to drop the rest.
-
-### What is still unbilled
-
-`jimtime harvest uninvoiced` asks Harvest what it is owed: one line per client, the tracked hours and their money value, largest balance first.
-
-```
-$ jimtime harvest uninvoiced
-Uninvoiced - 2026-06-28 through 2026-08-28
-
-CLIENT                                   HOURS            USD
-Acme                                     42.25       6,337.50
-Globex                                   12.00       1,800.00
--------------------------------------------------------------
-Total (2 clients)                        54.25       8,137.50
-```
-
-The amounts are Harvest's own, computed from the rates set there, and cover time that is tracked but not yet on an invoice.
-It defaults to the last two months, which covers the current and previous billing month; `--from` reaches further back, and since the Harvest report accepts at most a year per request, wider ranges are split across requests automatically.
-Uninvoiced expenses are reported separately at the bottom, or folded into each client's total with `--with-expenses`.
 
 ### Date ranges
 
-`review`, `approve`, `unapprove`, `report`, and `harvest` all take the same range flags:
+`review`, `approve`, `unapprove`, `report`, `invoice` and `harvest` all take the same range flags:
 
 | Flag | Range |
 |---|---|
-| `--today` | Today (the default) |
+| `--today` | Today (the default, except for `invoice`, which always needs a range) |
 | `--week` | The current Monday to Sunday week |
 | `--last-week` | The previous Monday to Sunday week |
+| `--month` | The current calendar month |
+| `--last-month` | The previous calendar month |
 | `--date YYYY-MM-DD` | A single day |
 | `--from A --to B` | An inclusive range |
 
@@ -300,37 +441,56 @@ Set `JIMTIME_TZ` to any IANA name to choose it; it defaults to `America/Los_Ange
 
 | Command | What it does |
 |---|---|
-| `status` | Show the current repo, its Harvest mapping, and today's store path |
-| `map` | Show the Harvest mapping for the current repo |
+| `status` | Show the current repo, its mapping, today's store path, and sync state |
+| `map` | Show the client/project mapping and rate for the current repo |
 | `add` | Add a time entry for the current repo |
 | `today` | Print today's time log |
 | `review` | List entries over a date range or a single day |
-| `approve` | Approve unapproved entries, the human gate before pushing |
+| `approve` | Approve unapproved entries, the human gate before billing |
 | `unapprove` | Set matching entries back to unapproved |
-| `report` | Export a markdown time report over a date range or a single day |
-| `harvest` | Query Harvest, show uninvoiced balances, and dry-run or push approved time entries |
+| `report` | Export a markdown time report |
+| `invoice` | Draft, finalize, send, list, open and void invoices |
+| `harvest` | Optional: query Harvest, dry-run or push approved entries |
+| `cloud` | Optional: log in to Dropbox/Google Drive and upload invoice PDFs |
+| `config` | Create, migrate and check the config |
+| `data` | Set up and inspect the auto-synced data repo |
 
 Run `jimtime <command> --help` for the full flag list.
 
-## How time is stored
+## How data is stored
 
-One JSON file per day at `$JIMTIME_HOME/entries/YYYY/MM/YYYY-MM-DD.json`, the only persisted artifact. [[ADR-0002](docs/adr/0002-per-day-json-store.md)]
+```
+$JIMTIME_HOME/
+  config/jimtime.toml               the config
+  config/templates/                 your invoice templates (optional)
+  entries/YYYY/MM/YYYY-MM-DD.json   the time, one file per day
+  invoices/YYYY/<number>.json       each invoice's record
+  invoices/YYYY/<number>.pdf        ...and its PDF
+```
+
+A day file looks like this: [[ADR-0002](docs/adr/0002-per-day-json-store.md)]
 
 ```json
 {
   "date": "2026-08-17",
   "sections": [
     {
-      "repo_path": "/Users/you/code/client/acme",
-      "client_id": 123, "client_name": "Acme",
-      "project_id": 234, "project_name": "Billing Portal",
-      "task_id": 345, "task_name": "Development",
+      "repo_path": "/Users/you/code/acme/website",
+      "client": "acme",
+      "client_name": "Acme Corp",
+      "project": "website",
+      "project_name": "Website",
+      "task": "development",
+      "task_name": "Development",
       "entries": [
         {
-          "id": "2026-08-17-acme-billing-portal-development-001",
-          "hours": 1.25, "billable": true, "approved": false, "needs_review": true,
+          "id": "2026-08-17-acme-corp-website-development-001",
+          "hours": 1.25,
+          "billable": true,
+          "approved": true,
+          "needs_review": false,
           "notes": "Implemented webhook retry handling",
-          "harvest_time_entry_id": null
+          "invoice": "2026-004"
         }
       ]
     }
@@ -340,15 +500,17 @@ One JSON file per day at `$JIMTIME_HOME/entries/YYYY/MM/YYYY-MM-DD.json`, the on
 
 A section groups entries that share a repo, client, project, and task.
 It is a storage and display grouping only; approval lives on the entry.
+Harvest ids (`harvest_*_id`, `harvest_time_entry_id`) appear only when Harvest is used.
 Terminal output and markdown reports are rendered on demand and never persisted.
 
 If an entry is wrong, fix it through the CLI or edit the day's JSON directly.
 It is plain, stable, and meant to be read.
+jimtime commits only the files it writes itself, so record a hand edit with `jimtime data sync`, which checks every day file and the config still parse before committing and pushing.
 
 ## The Claude Code skill
 
 This repo ships a `/jimtime` skill at [`.claude/skills/jimtime/`](.claude/skills/jimtime/SKILL.md) that lets [Claude Code](https://claude.com/claude-code) drive the workflow.
-It summarizes the work from your session into a conservative entry via `add --needs-review`, helps you review, and runs `approve` or `push` only on your explicit instruction.
+It summarizes the work from your session into a conservative entry via `add --needs-review`, helps you review, and runs `approve`, `invoice finalize` or `harvest push` only on your explicit instruction.
 
 It is marked `disable-model-invocation: true`, so it never fires on its own.
 You invoke it by typing `/jimtime`.
@@ -368,6 +530,7 @@ cargo fmt --all --check
 ```
 
 CI runs all three on every push and pull request.
+`cargo test keychain -- --ignored` also checks, against the real OS keychain, that cloud logins persist.
 Tagging `vX.Y.Z` builds the macOS binaries and opens a draft release with notes generated by [git-cliff](https://git-cliff.org/).
 It lands as a draft, so nothing publishes without a review.
 
@@ -377,19 +540,15 @@ Stable `cargo fmt` warns about them and ignores them, which is expected.
 ### Running your changes
 
 Building does not update the `jimtime` on your `PATH`.
-`cargo install` put a *copy* there, so `cargo build` only refreshes
-`./target/`, and every other shell keeps running whatever you installed last.
+`cargo install` put a *copy* there, so `cargo build` only refreshes `./target/`, and every other shell keeps running whatever you installed last.
 Reinstall to make a change live:
 
 ```sh
 cargo install --path . --force --locked
 ```
 
-Nothing does this for you, and the stale binary gives no hint that it is stale,
-so it is easy to test a change in this repo and then use the old one everywhere
-else.
-`--locked` builds against `Cargo.lock`, the same dependency set CI and the
-release binaries use.
+Nothing does this for you, and the stale binary gives no hint that it is stale, so it is easy to test a change in this repo and then use the old one everywhere else.
+`--locked` builds against `Cargo.lock`, the same dependency set CI and the release binaries use.
 
 To confirm which build is on your `PATH`, compare it against a fresh one:
 
@@ -404,10 +563,10 @@ Matching hashes mean the installed binary is current.
 
 | File | What it covers |
 |---|---|
-| [`CONTEXT.md`](CONTEXT.md) | The domain glossary: entry, store, view, mapping, section, approval |
+| [`CONTEXT.md`](CONTEXT.md) | The domain glossary: entry, store, config, key, invoice, fingerprint, data repo |
 | [`docs/adr/`](docs/adr/) | The load-bearing decisions and why they were made |
 | [`docs/HANDOFF.md`](docs/HANDOFF.md) | The build spec and data model |
-| [`AGENTS.md`](AGENTS.md), [`docs/agents/`](docs/agents/) | Durable project context for AI agents |
+| [`AGENTS.md`](AGENTS.md), [`docs/agents/`](docs/agents/) | Durable project context for AI agents, including external system setup |
 
 ## License
 

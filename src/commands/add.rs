@@ -2,7 +2,8 @@ use super::Command;
 use anyhow::{Result, bail};
 use clap::{Args, ValueEnum};
 
-use crate::mapping::Mappings;
+use crate::config::Config;
+use crate::datarepo::Sync;
 use crate::repo;
 use crate::store::{Day, Section};
 use crate::timeutil;
@@ -33,19 +34,11 @@ pub struct Add {
     #[arg(long)]
     date: Option<String>,
 
-    /// Task alias defined in the mapping config (e.g. development, meetings)
+    /// Task key from [tasks] in the config (default: the project's default_task)
     #[arg(long)]
     task: Option<String>,
 
-    /// Explicit Harvest task id (overrides --task and the mapping default)
-    #[arg(long)]
-    task_id: Option<u64>,
-
-    /// Display name for --task-id (defaults to "Task <id>")
-    #[arg(long)]
-    task_name: Option<String>,
-
-    /// Override the mapping's billable default
+    /// Override the project's billable default
     #[arg(long, value_enum)]
     billable: Option<Billable>,
 
@@ -69,29 +62,33 @@ impl Command for Add {
         };
 
         let repo = repo::current_repo()?;
-        let mappings = Mappings::load()?;
-        let m = mappings.for_repo(&repo)?.clone();
+        let config = Config::load()?;
+        let m = config.for_repo(&repo)?;
 
-        let (task_id, task_name) = self.resolve_task(&mappings, &m)?;
+        let task_key = self.task.as_deref().unwrap_or(&m.project.default_task);
+        let task = config.task(task_key)?;
 
         let billable = match self.billable {
             Some(Billable::Yes) => true,
             Some(Billable::No) => false,
-            None => m.billable,
+            None => m.project.billable,
         };
 
         let proto = Section {
             repo_path: repo.display().to_string(),
-            client_id: m.client_id,
-            client_name: m.client_name.clone(),
-            project_id: m.project_id,
-            project_name: m.project_name.clone(),
-            task_id,
-            task_name,
-            approved: false,
-            entries: Vec::new(),
+            client: m.client_key.to_string(),
+            client_name: m.client.name.clone(),
+            project: m.project_key.to_string(),
+            project_name: m.project.name.clone(),
+            task: task_key.to_string(),
+            task_name: task.name.clone(),
+            harvest_client_id: config.harvest_client_id(m.client_key),
+            harvest_project_id: config.harvest_project_id(m.client_key, m.project_key),
+            harvest_task_id: config.harvest_task_id(task_key),
+            ..Section::default()
         };
 
+        let sync = Sync::begin("add", false)?;
         let mut day = Day::load_or_new(&date)?;
         let id = day.add_entry(
             proto.clone(),
@@ -101,13 +98,16 @@ impl Command for Add {
             self.notes.clone(),
         );
         day.save()?;
+        sync.commit(&format!(
+            "add: {date} {}h {}",
+            fmt_hours(hours),
+            proto.label()
+        ))?;
 
         println!(
-            "Added {}h to {} - {} - {} on {}{}",
+            "Added {}h to {} on {}{}",
             fmt_hours(hours),
-            proto.client_name,
-            proto.project_name,
-            proto.task_name,
+            proto.label(),
             date,
             if self.needs_review {
                 "  [needs review]"
@@ -138,24 +138,5 @@ impl Add {
             }
             (None, None, None) => bail!("provide --hours, or both --from and --to"),
         }
-    }
-
-    fn resolve_task(
-        &self,
-        mappings: &Mappings,
-        m: &crate::mapping::RepoMapping,
-    ) -> Result<(u64, String)> {
-        if let Some(id) = self.task_id {
-            let name = self
-                .task_name
-                .clone()
-                .unwrap_or_else(|| format!("Task {id}"));
-            return Ok((id, name));
-        }
-        if let Some(alias) = &self.task {
-            let a = mappings.alias(alias)?;
-            return Ok((a.task_id, a.task_name.clone()));
-        }
-        Ok((m.default_task_id, m.default_task_name.clone()))
     }
 }

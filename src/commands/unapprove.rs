@@ -4,6 +4,7 @@ use clap::Args;
 use std::collections::HashSet;
 
 use crate::daterange::RangeArgs;
+use crate::datarepo::Sync;
 use crate::selection::FilterArgs;
 use crate::store::Day;
 use crate::view::fmt_hours;
@@ -32,9 +33,11 @@ impl Command for Unapprove {
     async fn run(&self) -> Result<()> {
         let mut changed_lines: Vec<(String, f64, String, String)> = Vec::new();
         let mut skipped_imported = 0usize;
+        let mut skipped_invoiced = 0usize;
         let mut seen: HashSet<String> = HashSet::new();
         let only_mode = !self.only.is_empty();
 
+        let sync = Sync::begin("unapprove", false)?;
         for date in &self.range.dates()? {
             let Some(mut day) = Day::load(date)? else {
                 continue;
@@ -44,7 +47,7 @@ impl Command for Unapprove {
                 if !self.filter.matches(s) {
                     continue;
                 }
-                let label = format!("{} - {} - {}", s.client_name, s.project_name, s.task_name);
+                let label = s.label();
                 for e in &mut s.entries {
                     seen.insert(e.id.clone());
                     if !e.approved || self.except.contains(&e.id) {
@@ -59,6 +62,11 @@ impl Command for Unapprove {
                         skipped_imported += 1;
                         continue;
                     }
+                    // Billed on an invoice - void the invoice first.
+                    if e.invoice.is_some() {
+                        skipped_invoiced += 1;
+                        continue;
+                    }
                     e.approved = false;
                     changed_lines.push((date.clone(), e.hours, label.clone(), e.id.clone()));
                     day_changed = true;
@@ -68,6 +76,13 @@ impl Command for Unapprove {
                 day.save()?;
             }
         }
+
+        sync.commit(&format!(
+            "unapprove: {} {} entr{}",
+            self.range.label()?,
+            changed_lines.len(),
+            if changed_lines.len() == 1 { "y" } else { "ies" }
+        ))?;
 
         // A billing gate: an id that matched nothing is almost certainly a typo.
         for id in self.only.iter().chain(self.except.iter()) {
@@ -92,6 +107,12 @@ impl Command for Unapprove {
             println!(
                 "\nLeft {skipped_imported} already-pushed entr{} approved (can't unapprove imported entries).",
                 if skipped_imported == 1 { "y" } else { "ies" }
+            );
+        }
+        if skipped_invoiced > 0 {
+            println!(
+                "\nLeft {skipped_invoiced} invoiced entr{} approved (void the invoice first: jimtime invoice void <number>).",
+                if skipped_invoiced == 1 { "y" } else { "ies" }
             );
         }
         Ok(())

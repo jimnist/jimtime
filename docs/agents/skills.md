@@ -5,9 +5,10 @@ This repo ships one Claude Code skill: **`/jimtime`**, at
 
 It is a thin wrapper around the CLI - it teaches Claude Code to summarize the
 user's work into a conservative `jimtime add`, help with `review`, and run
-`approve` / `harvest push` only on an explicit instruction. The CLI owns all the
-real logic (store, mapping, approval, dedup, Harvest push); the skill just drives
-it.
+`approve`, `invoice finalize` (always after a draft the user has seen, with its
+fingerprint) or `harvest push` only on an explicit instruction. The CLI owns all
+the real logic (store, config, approval, invoicing, sync, dedup, Harvest push);
+the skill just drives it.
 
 It is `disable-model-invocation: true`, so Claude never triggers it on its own -
 the user invokes it with `/jimtime`.
