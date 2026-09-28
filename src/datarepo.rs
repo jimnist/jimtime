@@ -10,7 +10,6 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::Mutex;
 
-use crate::config::Config;
 use crate::paths;
 
 /// Files written during this process, committed by [`Sync::commit`].
@@ -67,10 +66,28 @@ pub fn state() -> Result<RepoState> {
     if toplevel != root {
         return Ok(RepoState::Nested { toplevel });
     }
-    let auto = Config::load_optional()?
-        .map(|c| c.git.auto_sync)
-        .unwrap_or(true);
-    Ok(if auto { RepoState::Active { root } } else { RepoState::Disabled { root } })
+    Ok(if auto_sync_setting()? {
+        RepoState::Active { root }
+    } else {
+        RepoState::Disabled { root }
+    })
+}
+
+/// `[git] auto_sync` from the config, read on its own (default true). Sync
+/// must not depend on the rest of the config being valid: `config migrate`
+/// and hand fixes to a broken config go through it too.
+fn auto_sync_setting() -> Result<bool> {
+    let path = paths::config_file()?;
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Ok(true);
+    };
+    let table: toml::Table =
+        toml::from_str(&text).with_context(|| format!("parsing {}", path.display()))?;
+    Ok(table
+        .get("git")
+        .and_then(|g| g.get("auto_sync"))
+        .and_then(toml::Value::as_bool)
+        .unwrap_or(true))
 }
 
 fn canonical(p: PathBuf) -> PathBuf {

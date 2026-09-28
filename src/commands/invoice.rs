@@ -247,16 +247,16 @@ fn list_or_none(v: &[String]) -> String {
 }
 
 /// The next invoice number, continuing past Harvest's numbers when
-/// `invoice.harvest_numbering` is on. If Harvest cannot be read then, this
+/// `numbering` is on in harvest.toml. If Harvest cannot be read then, this
 /// fails rather than risk issuing a number Harvest already used.
 async fn next_number(config: &Config, year: i32) -> Result<(String, u32)> {
-    let external = if config.invoice.harvest_numbering {
+    let external = if config.harvest.numbering {
         HarvestApi::from_env()
-            .context("invoice.harvest_numbering is on, so Harvest credentials are needed")?
+            .context("harvest.toml has numbering = true, so Harvest credentials are needed")?
             .invoice_numbers()
             .await
             .context(
-                "reading Harvest's invoice numbers (invoice.harvest_numbering); \
+                "reading Harvest's invoice numbers (numbering = true in harvest.toml); \
                  refusing to guess the next number",
             )?
     } else {

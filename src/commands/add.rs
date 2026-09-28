@@ -82,9 +82,9 @@ impl Command for Add {
             project_name: m.project.name.clone(),
             task: task_key.to_string(),
             task_name: task.name.clone(),
-            harvest_client_id: m.client.harvest_id,
-            harvest_project_id: m.project.harvest_id,
-            harvest_task_id: task.harvest_id,
+            harvest_client_id: config.harvest_client_id(m.client_key),
+            harvest_project_id: config.harvest_project_id(m.client_key, m.project_key),
+            harvest_task_id: config.harvest_task_id(task_key),
             ..Section::default()
         };
 
