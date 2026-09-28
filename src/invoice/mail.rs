@@ -50,39 +50,28 @@ impl<'a> Mailer<'a> {
     }
 
     /// Check an invoice has somewhere to go, with the config key to fix.
-    pub fn check_recipients(
-        &self,
-        config: &Config,
-        inv: &Invoice,
-        extra_to: &[String],
-    ) -> Result<()> {
+    pub fn check_recipients(&self, config: &Config, inv: &Invoice) -> Result<()> {
         let r = inv.recipients(config);
-        if r.to.is_empty() && extra_to.is_empty() {
+        if r.to.is_empty() {
             bail!(
                 "client {:?} has no email_to; set it under [clients.{}]",
                 inv.client_key,
                 inv.client_key
             );
         }
-        for a in r.to.iter().chain(&r.cc).chain(&r.bcc).chain(extra_to) {
+        for a in r.to.iter().chain(&r.cc).chain(&r.bcc) {
             a.parse::<Mailbox>()
                 .with_context(|| format!("{a:?} is not a valid email address"))?;
         }
         Ok(())
     }
 
-    /// Send the invoice with its PDF attached, returning what to record.
-    pub async fn send(
-        &self,
-        config: &Config,
-        inv: &Invoice,
-        pdf: &Path,
-        extra_to: &[String],
-    ) -> Result<SendEvent> {
+    /// Send the invoice with its PDF attached to `inv.recipients`, returning
+    /// what to record. One-off recipients are added to `inv.client` first.
+    pub async fn send(&self, config: &Config, inv: &Invoice, pdf: &Path) -> Result<SendEvent> {
         let s = self.settings;
         let r = inv.recipients(config);
-        let mut to = r.to.clone();
-        to.extend(extra_to.iter().cloned());
+        let to = r.to.clone();
 
         let mut b = Message::builder()
             .from(s.from.parse()?)

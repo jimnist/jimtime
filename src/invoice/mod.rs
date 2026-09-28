@@ -280,18 +280,31 @@ impl Invoice {
         hex::encode(h.finalize())[..12].to_string()
     }
 
-    /// Who an email of this invoice goes to.
+    /// Who an email of this invoice goes to: the client's `email_to`, then Cc
+    /// from the client (including any one-off `--cc`) and from `[email]`, then
+    /// Bcc from `[email]`. Each address appears once, in the most visible
+    /// place it is listed (To over Cc over Bcc), so nobody gets it twice.
     pub fn recipients(&self, config: &Config) -> Recipients {
-        let (mut cc, bcc) = match &config.email {
-            Some(e) => (e.cc.clone(), e.bcc.clone()),
-            None => (Vec::new(), Vec::new()),
+        let (global_cc, global_bcc) = match &config.email {
+            Some(e) => (e.cc.as_slice(), e.bcc.as_slice()),
+            None => (&[][..], &[][..]),
         };
-        cc.extend(self.client.email_cc.iter().cloned());
-        Recipients {
-            to: self.client.email_to.clone(),
-            cc,
-            bcc,
-        }
+        let mut seen: Vec<String> = Vec::new();
+        let mut take = |list: &mut dyn Iterator<Item = &String>| -> Vec<String> {
+            let mut out = Vec::new();
+            for a in list {
+                let key = address_key(a);
+                if !seen.contains(&key) {
+                    seen.push(key);
+                    out.push(a.clone());
+                }
+            }
+            out
+        };
+        let to = take(&mut self.client.email_to.iter());
+        let cc = take(&mut self.client.email_cc.iter().chain(global_cc));
+        let bcc = take(&mut global_bcc.iter());
+        Recipients { to, cc, bcc }
     }
 
     /// Issued and not yet paid (nor void).
@@ -347,6 +360,16 @@ impl Invoice {
             .find(|i| i.number == number)
             .with_context(|| format!("no invoice numbered {number:?}"))
     }
+}
+
+/// The bare, lowercased address of `Name <a@b.c>` or `a@b.c`, for comparing.
+fn address_key(a: &str) -> String {
+    let a = a.trim();
+    let bare = match (a.rfind('<'), a.rfind('>')) {
+        (Some(l), Some(r)) if l < r => &a[l + 1..r],
+        _ => a,
+    };
+    bare.trim().to_lowercase()
 }
 
 pub struct Recipients {
@@ -628,6 +651,36 @@ mod tests {
         let c = cfg("[invoice]\nnumber_format = \"INV-{seq:04}\"\n");
         let existing = vec![inv("INV-0009", 2025, 9)];
         assert_eq!(next_number(&c, 2026, &existing, &[]).unwrap().0, "INV-0010");
+    }
+
+    #[test]
+    fn recipients_merge_cc_and_never_repeat_an_address() {
+        let c = cfg(r#"[email]
+            host = "smtp.example.com"
+            username = "me"
+            from = "Me <me@example.com>"
+            cc = ["books@me.example", "AP@acme.test"]
+            bcc = ["me@example.com", "Books <books@me.example>"]
+            "#);
+        let mut i = inv("DRAFT", 2026, 0);
+        i.client.email_cc = vec!["Controller <controller@acme.test>".into()];
+        let r = i.recipients(&c);
+        assert_eq!(r.to, vec!["ap@acme.test"]);
+        assert_eq!(
+            r.cc,
+            vec!["Controller <controller@acme.test>", "books@me.example"],
+            "client cc first, then [email] cc; the To address is not repeated"
+        );
+        assert_eq!(r.bcc, vec!["me@example.com"], "already in Cc: not repeated");
+    }
+
+    #[test]
+    fn a_one_off_cc_changes_the_fingerprint() {
+        let c = cfg("");
+        let a = inv("DRAFT", 2026, 0);
+        let mut b = a.clone();
+        b.client.email_cc.push("cfo@acme.test".into());
+        assert_ne!(a.fingerprint(&c), b.fingerprint(&c));
     }
 
     #[test]
