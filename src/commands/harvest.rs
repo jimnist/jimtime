@@ -573,28 +573,24 @@ async fn unpush(
 }
 
 /// The Harvest project and task ids for a section: the ones recorded on it,
-/// else the ones in config, so ids added to config later still apply.
+/// else the ones in harvest.toml, so ids added there later still apply.
 fn harvest_ids(config: &Config, s: &Section) -> Result<(u64, u64)> {
-    let project = s.harvest_project_id.or_else(|| {
-        config
-            .clients
-            .get(&s.client)
-            .and_then(|c| c.projects.get(&s.project))
-            .and_then(|p| p.harvest_id)
-    });
+    let project = s
+        .harvest_project_id
+        .or_else(|| config.harvest_project_id(&s.client, &s.project));
     let task = s
         .harvest_task_id
-        .or_else(|| config.tasks.get(&s.task).and_then(|t| t.harvest_id));
+        .or_else(|| config.harvest_task_id(&s.task));
     match (project, task) {
         (Some(p), Some(t)) => Ok((p, t)),
         (None, _) => bail!(
-            "no Harvest project id for {}: set harvest_id under [clients.{}.projects.{}]",
+            "no Harvest project id for {}: set `id` under [clients.{}.projects.{}] in harvest.toml",
             s.label(),
             s.client,
             s.project
         ),
         (_, None) => bail!(
-            "no Harvest task id for {}: set harvest_id under [tasks.{}]",
+            "no Harvest task id for {}: set `id` under [tasks.{}] in harvest.toml",
             s.label(),
             s.task
         ),

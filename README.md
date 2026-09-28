@@ -79,7 +79,7 @@ export JIMTIME_SMTP_PASSWORD="..."
 # Defaults to America/Los_Angeles.
 # export JIMTIME_TZ="Europe/Berlin"
 
-# Only with [harvest] enabled. Create a token at https://id.getharvest.com/developers
+# Only when using Harvest (harvest.toml). Create a token at https://id.getharvest.com/developers
 # export HARVEST_ACCESS_TOKEN="..."
 # export HARVEST_ACCOUNT_ID="..."
 
@@ -159,7 +159,9 @@ Rates are hourly, per project, with optional per-task overrides, in the client's
 
 Upgrading from the Harvest-only version?
 `jimtime config migrate` converts `harvest-projects.json` into `jimtime.toml`, keeps your task aliases as keys and your Harvest ids, and rewrites the day files to match, in one commit.
-It leaves Harvest **disabled**; add `rate`s and `[business]` to invoice, or set `[harvest] enabled = true` to keep pushing.
+Everything Harvest goes to its own `config/harvest.toml`: pushing (left **off**), numbering, and the Harvest ids of your clients, projects and tasks.
+Add `rate`s and `[business]` to invoice, or set `enabled = true` in harvest.toml to keep pushing.
+Run it again on a jimtime.toml from before harvest.toml existed and it moves the Harvest settings out, editing the file in place so your comments and edits stay.
 
 Confirm a repo resolves:
 
@@ -312,7 +314,7 @@ jimtime invoice import-harvest
 It only reads Harvest.
 Every Harvest invoice becomes a local record with its PDF and paid date, every entry Harvest billed is locked to that invoice so it can never be billed again, and time that only ever lived in Harvest is added to your store.
 Imported records keep Harvest's own line items, discounts and amount, since what the client was billed is not always the tracked hours times the rate.
-It needs the `HARVEST_*` credentials and a `harvest_id` on each client, project and task (which `config migrate` carries over), and it can be re-run to pick up changes, such as an invoice getting paid.
+It needs the `HARVEST_*` credentials and the Harvest ids in harvest.toml (which `config migrate` writes), and it can be re-run to pick up changes, such as an invoice getting paid.
 
 Numbers default to `{year}-{seq:03}` (`2026-004`), restarting each year; set `invoice.number_format` and `invoice.start_seq` to continue an existing sequence.
 Finalizing requires a successful pull when the data repo has a remote, so the next number is always the real next number.
@@ -320,12 +322,15 @@ Finalizing requires a successful pull when the data repo has a remote, so the ne
 Coming from Harvest invoicing, carry its numbers on instead:
 
 ```toml
+# jimtime.toml
 [invoice]
 number_format = "{seq:03}"   # match Harvest's: 036 -> 037
-harvest_numbering = true
+
+# harvest.toml
+numbering = true
 ```
 
-`draft` and `finalize` then read your Harvest invoice numbers (read-only, with the `HARVEST_*` credentials, whether or not `[harvest] enabled` is on) and continue past the highest of Harvest's and jimtime's, so an invoice issued in Harvest during the switch can never be duplicated.
+`draft` and `finalize` then read your Harvest invoice numbers (read-only, with the `HARVEST_*` credentials, whether or not pushing is enabled) and continue past the highest of Harvest's and jimtime's, so an invoice issued in Harvest during the switch can never be duplicated.
 The draft prints the number finalize will use, and finalize refuses to run if it cannot read Harvest.
 
 #### Templates
@@ -338,7 +343,26 @@ The email subject and body under `[email]` are templates with the same context.
 
 ### Push to Harvest (optional)
 
-Set `[harvest] enabled = true` and add `harvest_id`s to the clients, projects and tasks you push.
+Harvest's settings live in `config/harvest.toml`, beside jimtime.toml:
+
+```toml
+enabled = true      # push time to Harvest (off by default)
+numbering = false   # continue Harvest's invoice numbers
+
+# Tasks are based on Harvest's tasks. jimtime knows the union of the tasks
+# here and in jimtime.toml.
+[tasks.development]
+id = 345
+name = "Development"
+
+[clients.acme]
+id = 123
+
+[clients.acme.projects.website]
+id = 234
+```
+
+Keys are jimtime's (`acme`, `website`, `development`); the ids are Harvest's.
 `jimtime harvest clients | projects | tasks --project ID` looks them up.
 
 Always dry-run first.

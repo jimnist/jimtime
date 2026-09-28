@@ -1,10 +1,12 @@
-//! The config file (`config/jimtime.toml`): the business, clients, projects,
-//! tasks, repo mappings, and the invoice/email/git/Harvest/cloud settings.
+//! The config files: `config/jimtime.toml` (the business, clients, projects,
+//! tasks, repo mappings, and the invoice/email/git/cloud settings) and, when
+//! Harvest is used, `config/harvest.toml` (everything Harvest: whether it is
+//! on, numbering, and the Harvest ids of clients, projects and tasks).
 //!
 //! Clients, projects and tasks are identified by their **keys** (the TOML table
-//! names). Harvest ids are optional attributes. [ADR-0006] Nothing here is
-//! secret: passwords and tokens come from the environment or the keychain.
-//! [ADR-0003, ADR-0010]
+//! names). [ADR-0006] The tasks jimtime knows are the union of both files'.
+//! Nothing here is secret: passwords and tokens come from the environment or
+//! the keychain. [ADR-0003, ADR-0010]
 
 use anyhow::{Context, Result, anyhow, bail};
 use serde::Deserialize;
@@ -22,8 +24,9 @@ pub struct Config {
     #[serde(default)]
     pub invoice: InvoiceSettings,
     pub email: Option<EmailSettings>,
-    #[serde(default)]
-    pub harvest: HarvestSettings,
+    /// From `harvest.toml`, not this file.
+    #[serde(skip)]
+    pub harvest: HarvestConfig,
     #[serde(default)]
     pub git: GitSettings,
     #[serde(default)]
@@ -68,11 +71,6 @@ pub struct InvoiceSettings {
     pub chrome: Option<String>,
     /// Free text printed on every invoice (e.g. "Thank you!").
     pub notes: Option<String>,
-    /// Share one number sequence with Harvest: finalize reads Harvest's
-    /// invoice numbers (read-only, `HARVEST_*` credentials) and continues
-    /// past the highest. Independent of `[harvest] enabled`. [ADR-0008]
-    #[serde(default)]
-    pub harvest_numbering: bool,
 }
 
 impl Default for InvoiceSettings {
@@ -84,7 +82,6 @@ impl Default for InvoiceSettings {
             due_days: default_due_days(),
             chrome: None,
             notes: None,
-            harvest_numbering: false,
         }
     }
 }
@@ -151,12 +148,49 @@ fn default_body() -> String {
         .into()
 }
 
+/// `config/harvest.toml`: everything Harvest, kept out of jimtime.toml so the
+/// main config reads the same whether or not Harvest is used. Absent means
+/// Harvest is off and nothing has a Harvest id. [ADR-0006]
 #[derive(Deserialize, Default)]
 #[serde(deny_unknown_fields)]
-pub struct HarvestSettings {
-    /// Off by default. [ADR-0006]
+pub struct HarvestConfig {
+    /// Push time to Harvest (`harvest ...`, `approve --push`). Off by default.
     #[serde(default)]
     pub enabled: bool,
+    /// Continue Harvest's invoice numbers: finalize reads them (read-only)
+    /// and never reuses one. Works with `enabled = false`. [ADR-0008]
+    #[serde(default)]
+    pub numbering: bool,
+    /// Harvest ids of jimtime's clients and their projects, by key.
+    #[serde(default)]
+    pub clients: BTreeMap<String, HarvestClient>,
+    /// Harvest's tasks, by jimtime task key. A task here but not in
+    /// jimtime.toml is still a jimtime task, named as in Harvest.
+    #[serde(default)]
+    pub tasks: BTreeMap<String, HarvestTask>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct HarvestClient {
+    pub id: u64,
+    #[serde(default)]
+    pub projects: BTreeMap<String, HarvestProject>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct HarvestProject {
+    pub id: u64,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+pub struct HarvestTask {
+    pub id: u64,
+    /// Harvest's name for it; required when jimtime.toml does not list the
+    /// task itself.
+    pub name: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -217,7 +251,6 @@ pub struct Client {
     pub email_cc: Vec<String>,
     /// Per-client template, relative to the config dir.
     pub template: Option<String>,
-    pub harvest_id: Option<u64>,
     #[serde(default)]
     pub projects: BTreeMap<String, Project>,
 }
@@ -239,14 +272,12 @@ pub struct Project {
     pub default_task: String,
     #[serde(default = "yes")]
     pub billable: bool,
-    pub harvest_id: Option<u64>,
 }
 
 #[derive(Deserialize, Clone)]
 #[serde(deny_unknown_fields)]
 pub struct Task {
     pub name: String,
-    pub harvest_id: Option<u64>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -300,16 +331,86 @@ impl Config {
         Self::load_from(&path).map(Some)
     }
 
+    /// Load `path` (a jimtime.toml) and the `harvest.toml` beside it, if any.
     pub fn load_from(path: &Path) -> Result<Self> {
         let text =
             std::fs::read_to_string(path).with_context(|| format!("reading {}", path.display()))?;
-        Self::parse(&text).with_context(|| format!("in {}", path.display()))
+        let hpath = path.with_file_name(HARVEST_FILE);
+        let htext = match std::fs::read_to_string(&hpath) {
+            Ok(t) => Some(t),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => None,
+            Err(e) => return Err(e).with_context(|| format!("reading {}", hpath.display())),
+        };
+        let main = Self::parse_main(&text).with_context(|| format!("in {}", path.display()))?;
+        let harvest = match &htext {
+            Some(t) => toml::from_str(t).with_context(|| format!("in {}", hpath.display()))?,
+            None => HarvestConfig::default(),
+        };
+        main.join(harvest)
+            .with_context(|| format!("in {} / {}", path.display(), hpath.display()))
     }
 
+    /// Parse a jimtime.toml alone (no Harvest).
+    #[cfg(test)]
     pub fn parse(text: &str) -> Result<Self> {
-        let cfg: Config = toml::from_str(text)?;
-        cfg.validate()?;
-        Ok(cfg)
+        Self::parse_main(text)?.join(HarvestConfig::default())
+    }
+
+    /// Parse a jimtime.toml and a harvest.toml together.
+    #[cfg(test)]
+    pub fn parse_with_harvest(text: &str, harvest: &str) -> Result<Self> {
+        Self::from_texts(text, Some(harvest))
+    }
+
+    /// Parse and validate the two files' contents as they would load.
+    pub fn from_texts(main: &str, harvest: Option<&str>) -> Result<Self> {
+        let h = match harvest {
+            Some(t) => toml::from_str(t).context(HARVEST_FILE)?,
+            None => HarvestConfig::default(),
+        };
+        Self::parse_main(main)?.join(h)
+    }
+
+    /// Parse and validate a jimtime.toml, before Harvest is joined in.
+    pub fn parse_main(text: &str) -> Result<Self> {
+        let table: toml::Table = toml::from_str(text)?;
+        if let Some(key) = legacy_harvest_key(&table) {
+            bail!(
+                "{key} is a Harvest setting, and those now live in config/{HARVEST_FILE}.\n\
+                 Move them there with:  jimtime config migrate"
+            );
+        }
+        Ok(toml::from_str(text)?)
+    }
+
+    /// Add harvest.toml: its tasks join jimtime's (the union), and its client
+    /// and project keys must be ones jimtime.toml defines. Then validate.
+    fn join(mut self, harvest: HarvestConfig) -> Result<Self> {
+        for (ck, hc) in &harvest.clients {
+            let client = self.clients.get(ck).ok_or_else(|| {
+                anyhow!("{HARVEST_FILE}: clients.{ck} is not a client in jimtime.toml")
+            })?;
+            for pk in hc.projects.keys() {
+                if !client.projects.contains_key(pk) {
+                    bail!(
+                        "{HARVEST_FILE}: clients.{ck}.projects.{pk} is not a project of {ck} in jimtime.toml"
+                    );
+                }
+            }
+        }
+        for (tk, ht) in &harvest.tasks {
+            if !self.tasks.contains_key(tk) {
+                let name = ht.name.clone().ok_or_else(|| {
+                    anyhow!(
+                        "{HARVEST_FILE}: tasks.{tk} is not in jimtime.toml, so it needs a `name`"
+                    )
+                })?;
+                self.tasks.insert(tk.clone(), Task { name });
+            }
+        }
+        self.harvest = harvest;
+        self.validate()?;
+        Ok(self)
     }
 
     /// Cross-reference checks the TOML shape cannot express, so a typo fails at
@@ -413,11 +514,56 @@ impl Config {
         if !self.harvest.enabled {
             bail!(
                 "the Harvest integration is disabled.\n\
-                 Turn it on in {} with:\n\n  [harvest]\n  enabled = true",
-                paths::config_file()?.display()
+                 Turn it on in {} with:\n\n  enabled = true",
+                paths::harvest_config_file()?.display()
             );
         }
         Ok(())
+    }
+
+    pub fn harvest_client_id(&self, client: &str) -> Option<u64> {
+        self.harvest.clients.get(client).map(|c| c.id)
+    }
+
+    pub fn harvest_project_id(&self, client: &str, project: &str) -> Option<u64> {
+        self.harvest
+            .clients
+            .get(client)
+            .and_then(|c| c.projects.get(project))
+            .map(|p| p.id)
+    }
+
+    pub fn harvest_task_id(&self, task: &str) -> Option<u64> {
+        self.harvest.tasks.get(task).map(|t| t.id)
+    }
+
+    /// The client key whose Harvest id is `id`.
+    pub fn client_for_harvest(&self, id: u64) -> Option<&str> {
+        self.harvest
+            .clients
+            .iter()
+            .find(|(_, c)| c.id == id)
+            .map(|(k, _)| k.as_str())
+    }
+
+    /// The key of `client`'s project whose Harvest id is `id`.
+    pub fn project_for_harvest(&self, client: &str, id: u64) -> Option<&str> {
+        self.harvest
+            .clients
+            .get(client)?
+            .projects
+            .iter()
+            .find(|(_, p)| p.id == id)
+            .map(|(k, _)| k.as_str())
+    }
+
+    /// The task key whose Harvest id is `id`.
+    pub fn task_for_harvest(&self, id: u64) -> Option<&str> {
+        self.harvest
+            .tasks
+            .iter()
+            .find(|(_, t)| t.id == id)
+            .map(|(k, _)| k.as_str())
     }
 
     /// The template for a client: its own, else the global one, else `None`
@@ -429,6 +575,44 @@ impl Config {
             None => None,
         })
     }
+}
+
+/// The Harvest config's file name, beside jimtime.toml.
+pub const HARVEST_FILE: &str = "harvest.toml";
+
+/// The first Harvest setting found in a jimtime.toml, from before they moved
+/// to harvest.toml: `[harvest]`, `invoice.harvest_numbering`, or a
+/// `harvest_id` on a client, project or task.
+pub fn legacy_harvest_key(t: &toml::Table) -> Option<String> {
+    if t.contains_key("harvest") {
+        return Some("[harvest]".into());
+    }
+    let sub = |v: Option<&toml::Value>| v.and_then(toml::Value::as_table).cloned();
+    if sub(t.get("invoice")).is_some_and(|i| i.contains_key("harvest_numbering")) {
+        return Some("invoice.harvest_numbering".into());
+    }
+    for (tk, task) in sub(t.get("tasks")).unwrap_or_default() {
+        if task
+            .as_table()
+            .is_some_and(|x| x.contains_key("harvest_id"))
+        {
+            return Some(format!("tasks.{tk}.harvest_id"));
+        }
+    }
+    for (ck, client) in sub(t.get("clients")).unwrap_or_default() {
+        let Some(client) = client.as_table() else {
+            continue;
+        };
+        if client.contains_key("harvest_id") {
+            return Some(format!("clients.{ck}.harvest_id"));
+        }
+        for (pk, p) in sub(client.get("projects")).unwrap_or_default() {
+            if p.as_table().is_some_and(|x| x.contains_key("harvest_id")) {
+                return Some(format!("clients.{ck}.projects.{pk}.harvest_id"));
+            }
+        }
+    }
+    None
 }
 
 /// `~/x` → `$HOME/x`, so config paths can stay portable across machines.
@@ -451,7 +635,6 @@ mod tests {
 
         [tasks.programming]
         name = "Programming"
-        harvest_id = 26185917
 
         [tasks.pm]
         name = "Project Management"
@@ -516,18 +699,118 @@ mod tests {
 
     #[test]
     fn unknown_fields_are_rejected() {
-        let text = format!("{SAMPLE}\n[harvest]\nenabeld = true\n");
+        let text = format!("{SAMPLE}\n[git]\nauto_snyc = true\n");
         assert!(
             Config::parse(&text).is_err(),
             "typos must not pass silently"
         );
+        assert!(
+            Config::parse_with_harvest(SAMPLE, "enabeld = true").is_err(),
+            "in harvest.toml too"
+        );
     }
+
+    const HARVEST: &str = r#"
+        enabled = true
+        numbering = true
+
+        [tasks.programming]
+        id = 26185917
+
+        [tasks.design]
+        id = 26185916
+        name = "Design"
+
+        [clients.magic-mind]
+        id = 17474327
+
+        [clients.magic-mind.projects.automations]
+        id = 47491699
+    "#;
 
     #[test]
     fn harvest_gate() {
         let c = Config::parse(SAMPLE).unwrap();
-        assert!(c.require_harvest().is_err());
-        let on = Config::parse(&format!("{SAMPLE}\n[harvest]\nenabled = true\n")).unwrap();
+        assert!(c.require_harvest().is_err(), "no harvest.toml: off");
+        let on = Config::parse_with_harvest(SAMPLE, HARVEST).unwrap();
         assert!(on.require_harvest().is_ok());
+        assert!(on.harvest.numbering);
+    }
+
+    #[test]
+    fn harvest_ids_come_from_harvest_toml_both_ways() {
+        let c = Config::parse_with_harvest(SAMPLE, HARVEST).unwrap();
+        assert_eq!(c.harvest_client_id("magic-mind"), Some(17474327));
+        assert_eq!(
+            c.harvest_project_id("magic-mind", "automations"),
+            Some(47491699)
+        );
+        assert_eq!(c.harvest_task_id("programming"), Some(26185917));
+        assert_eq!(c.harvest_task_id("pm"), None, "a jimtime-only task");
+        assert_eq!(c.client_for_harvest(17474327), Some("magic-mind"));
+        assert_eq!(
+            c.project_for_harvest("magic-mind", 47491699),
+            Some("automations")
+        );
+        assert_eq!(c.task_for_harvest(26185916), Some("design"));
+    }
+
+    #[test]
+    fn tasks_are_the_union_of_both_files() {
+        let c = Config::parse_with_harvest(SAMPLE, HARVEST).unwrap();
+        // jimtime.toml's name wins for a task in both files.
+        assert_eq!(c.task("programming").unwrap().name, "Programming");
+        assert_eq!(
+            c.task("pm").unwrap().name,
+            "Project Management",
+            "jimtime only"
+        );
+        assert_eq!(
+            c.task("design").unwrap().name,
+            "Design",
+            "harvest.toml only"
+        );
+    }
+
+    #[test]
+    fn a_harvest_only_task_needs_a_name() {
+        let err = Config::parse_with_harvest(SAMPLE, "[tasks.qa]\nid = 5\n")
+            .err()
+            .unwrap()
+            .to_string();
+        assert!(err.contains("tasks.qa") && err.contains("name"), "{err}");
+    }
+
+    #[test]
+    fn harvest_toml_cannot_name_clients_or_projects_jimtime_lacks() {
+        assert!(Config::parse_with_harvest(SAMPLE, "[clients.nope]\nid = 1\n").is_err());
+        let bad = "[clients.magic-mind]\nid = 1\n[clients.magic-mind.projects.nope]\nid = 2\n";
+        assert!(Config::parse_with_harvest(SAMPLE, bad).is_err());
+    }
+
+    #[test]
+    fn old_harvest_keys_in_jimtime_toml_point_at_migrate() {
+        for (old, key) in [
+            ("[harvest]\nenabled = true\n", "[harvest]"),
+            (
+                "[invoice]\nharvest_numbering = true\n",
+                "invoice.harvest_numbering",
+            ),
+        ] {
+            let err = Config::parse(&format!("{SAMPLE}\n{old}"))
+                .err()
+                .unwrap()
+                .to_string();
+            assert!(err.contains(key) && err.contains("config migrate"), "{err}");
+        }
+        let text = SAMPLE.replace(
+            "name = \"Automations\"",
+            "name = \"Automations\"\nharvest_id = 9",
+        );
+        let err = Config::parse(&text).err().unwrap().to_string();
+        assert!(
+            err.contains("clients.magic-mind.projects.automations.harvest_id"),
+            "{err}"
+        );
     }
 }

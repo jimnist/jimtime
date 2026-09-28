@@ -24,7 +24,7 @@ An invoice is a promise to a client, so it gets the same treatment as a Harvest 
   There is no counter file: the records are the counter.
 - **Continuing Harvest's numbering.**
   Moving from Harvest invoicing, the numbers must carry on, and while both systems might issue invoices they must never collide.
-  With `invoice.harvest_numbering = true`, `draft` and `finalize` read every Harvest invoice number (read-only), parse the ones that fit `number_format`, and continue past the highest of Harvest's and jimtime's.
+  With `numbering = true` in harvest.toml, `draft` and `finalize` read every Harvest invoice number (read-only), parse the ones that fit `number_format`, and continue past the highest of Harvest's and jimtime's.
   Numbers in some other scheme are ignored.
   If Harvest cannot be read, finalize refuses rather than guess, like the required pull.
   `start_seq` alone would also continue the sequence, but would duplicate a number Harvest issued after the switch.

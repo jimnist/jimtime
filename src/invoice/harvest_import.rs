@@ -32,40 +32,39 @@ pub struct Report {
     pub backfilled_unbilled: usize,
 }
 
+/// The config keys for a Harvest client, looked up by its id in harvest.toml.
+fn client_key(config: &Config, id: u64, name: &str) -> Result<String> {
+    config
+        .client_for_harvest(id)
+        .map(str::to_string)
+        .with_context(|| {
+            format!("Harvest client {name:?} (id {id}) is not under [clients.*] in harvest.toml")
+        })
+}
+
 /// The config keys for a Harvest entry's client, project and task, looked up
-/// by `harvest_id`.
+/// by their ids in harvest.toml.
 fn keys_for(config: &Config, te: &TimeEntry) -> Result<(String, String, String)> {
-    let (ck, client) = config
-        .clients
-        .iter()
-        .find(|(_, c)| c.harvest_id == Some(te.client.id))
+    let ck = client_key(config, te.client.id, &te.client.name)?;
+    let pk = config
+        .project_for_harvest(&ck, te.project.id)
         .with_context(|| {
             format!(
-                "Harvest client {:?} (id {}) has no [clients.*] entry with that harvest_id",
-                te.client.name, te.client.id
-            )
-        })?;
-    let (pk, _) = client
-        .projects
-        .iter()
-        .find(|(_, p)| p.harvest_id == Some(te.project.id))
-        .with_context(|| {
-            format!(
-                "Harvest project {:?} (id {}) has no [clients.{ck}.projects.*] entry with that harvest_id",
+                "Harvest project {:?} (id {}) is not under [clients.{ck}.projects.*] in harvest.toml",
                 te.project.name, te.project.id
             )
-        })?;
-    let (tk, _) = config
-        .tasks
-        .iter()
-        .find(|(_, t)| t.harvest_id == Some(te.task.id))
+        })?
+        .to_string();
+    let tk = config
+        .task_for_harvest(te.task.id)
         .with_context(|| {
             format!(
-                "Harvest task {:?} (id {}) has no [tasks.*] entry with that harvest_id",
+                "Harvest task {:?} (id {}) is not under [tasks.*] in harvest.toml",
                 te.task.name, te.task.id
             )
-        })?;
-    Ok((ck.clone(), pk.clone(), tk.clone()))
+        })?
+        .to_string();
+    Ok((ck, pk, tk))
 }
 
 /// The section a backfilled entry goes in: the config's names, and the repo
@@ -132,17 +131,7 @@ fn record_for(
             config.invoice.number_format
         ),
     };
-    let client_key = config
-        .clients
-        .iter()
-        .find(|(_, c)| c.harvest_id == Some(hinv.client.id))
-        .map(|(k, _)| k.clone())
-        .with_context(|| {
-            format!(
-                "Harvest client {:?} (id {}) has no [clients.*] entry with that harvest_id",
-                hinv.client.name, hinv.client.id
-            )
-        })?;
+    let client_key = client_key(config, hinv.client.id, &hinv.client.name)?;
 
     let mut lines: Vec<Line> = Vec::new();
     for (te, local_id) in entries {
@@ -478,25 +467,30 @@ mod tests {
     use crate::harvest::{IdOnly, InvoiceLineItem, InvoiceLink, Named};
 
     fn config() -> Config {
-        Config::parse(
+        Config::parse_with_harvest(
             r#"
             [invoice]
             number_format = "{seq:03}"
             [tasks.programming]
             name = "Programming"
-            harvest_id = 30
             [clients.mm]
             name = "Magic Mind"
-            harvest_id = 10
             [clients.mm.projects.auto]
             name = "Automations"
-            harvest_id = 20
             default_task = "programming"
             rate = 150.0
             [[repos]]
             path = "/nonexistent/mm"
             client = "mm"
             project = "auto"
+            "#,
+            r#"
+            [tasks.programming]
+            id = 30
+            [clients.mm]
+            id = 10
+            [clients.mm.projects.auto]
+            id = 20
             "#,
         )
         .unwrap()

@@ -44,7 +44,8 @@ Legacy files are migrated on load: section-level `approved` is pushed onto the e
 
 ## Config
 
-`$JIMTIME_HOME/config/jimtime.toml` [ADR-0006]: `[business]`, `[invoice]`, `[email]`, `[harvest]` (off by default), `[git]`, `[cloud.*]`, `[clients.<key>]` with nested `[clients.<key>.projects.<key>]` (rate, task_rates, default_task, billable), `[tasks.<key>]`, and `[[repos]]` mapping a repo's canonical `git rev-parse --show-toplevel` to a client and project.
+`$JIMTIME_HOME/config/jimtime.toml` [ADR-0006]: `[business]`, `[invoice]`, `[email]`, `[git]`, `[cloud.*]`, `[clients.<key>]` with nested `[clients.<key>.projects.<key>]` (rate, task_rates, default_task, billable), `[tasks.<key>]`, and `[[repos]]` mapping a repo's canonical `git rev-parse --show-toplevel` to a client and project.
+`$JIMTIME_HOME/config/harvest.toml` [ADR-0006], only when Harvest is used: `enabled` (pushing, off by default), `numbering`, and `id`s under `[clients.<key>]`, `[clients.<key>.projects.<key>]` and `[tasks.<key>]` (with `name`). Tasks are the union of both files.
 Validated at load with `deny_unknown_fields` and cross-reference checks. One repo → one client/project; multiple sections in a day arise only from task overrides.
 
 ## Rules

@@ -23,19 +23,19 @@ impl Command for Map {
             "Client:           {} ({}){}",
             m.client.name,
             m.client_key,
-            harvest(m.client.harvest_id)
+            harvest(config.harvest_client_id(m.client_key))
         );
         println!(
             "Project:          {} ({}){}",
             m.project.name,
             m.project_key,
-            harvest(m.project.harvest_id)
+            harvest(config.harvest_project_id(m.client_key, m.project_key))
         );
         println!(
             "Default task:     {} ({}){}",
             task.name,
             task_key,
-            harvest(task.harvest_id)
+            harvest(config.harvest_task_id(task_key))
         );
         println!(
             "Billable default: {}",

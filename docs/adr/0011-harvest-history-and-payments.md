@@ -7,7 +7,7 @@ Worse, until jimtime knows it, time Harvest already billed looks invoiceable her
 ## Decision
 
 - **`jimtime invoice import-harvest`** reads Harvest (never writes to it) and brings the history home. It is re-runnable, and `--dry-run` shows what it would do.
-  1. Harvest-only time entries (logged before jimtime existed) are added to the store under the client/project/task whose `harvest_id` matches.
+  1. Harvest-only time entries (logged before jimtime existed) are added to the store under the client/project/task whose Harvest `id` in harvest.toml matches.
      Billed ones are approved and locked to their invoice; unbilled ones are flagged needs-review.
   2. Local entries Harvest has billed are locked to that invoice number (`Entry.invoice`), so they are never invoiced again.
   3. Each issued Harvest invoice becomes a record (`invoices/YYYY/<number>.json`, `source: harvest`) with its PDF, downloaded from the client-facing link Harvest emails out (the API has no PDF endpoint).
@@ -15,9 +15,9 @@ Worse, until jimtime knows it, time Harvest already billed looks invoiceable her
 - **Harvest's money is authoritative for Harvest's invoices.**
   Harvest line items can be edited and discounted (invoice 034 had a 25% discount and a line billed below the tracked hours), so a record keeps Harvest's line items, discount, taxes and amount (`harvest`, `total`) as what the client was billed.
   Its `lines` record the time each invoice covered, at each entry's rate, and may not add up to `total`.
-- **Everything is checked before anything is written**: every Harvest client, project and task maps to a config key by `harvest_id`, every number fits `number_format`, and no invoice number or entry is claimed by both sides differently.
+- **Everything is checked before anything is written**: every Harvest client, project and task maps to a config key by its `id` in harvest.toml, every number fits `number_format`, and no invoice number or entry is claimed by both sides differently.
   Any failure names what to fix and imports nothing.
-- The import only reads, so like `invoice.harvest_numbering` it does not need `[harvest] enabled` (ADR-0006).
+- The import only reads, so like `numbering` it does not need `enabled = true` in harvest.toml (ADR-0006).
 - **Payments**: an invoice record carries `paid_date`.
   `jimtime invoice paid <number> [--date]` records one (`--undo` takes it back), imports carry Harvest's, and a payment recorded here survives a re-import that has none.
   `invoice list` shows each invoice as paid, open, not sent, overdue or void, and the outstanding total per currency.

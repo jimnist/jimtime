@@ -17,7 +17,7 @@ An on-demand, ephemeral rendering of the Store for human eyes - terminal output 
 _Avoid_: log
 
 **Config**:
-`$JIMTIME_HOME/config/jimtime.toml`: the business, Clients, Projects, Tasks, repo Mappings, and the invoice/email/git/Harvest/cloud settings. Non-secret; secrets come from the environment or the keychain. [ADR-0003, ADR-0006, ADR-0010]
+`$JIMTIME_HOME/config/jimtime.toml`: the business, Clients, Projects, Tasks, repo Mappings, and the invoice/email/git/cloud settings; plus `config/harvest.toml` for everything Harvest (pushing, numbering, Harvest ids). Tasks are the union of both files. Non-secret; secrets come from the environment or the keychain. [ADR-0003, ADR-0006, ADR-0010]
 
 **Key**:
 The short slug that identifies a Client, Project or Task in the Config (`magic-mind`, `automations`, `programming`). Keys are the identity, names are labels, and Harvest ids are optional attributes. [ADR-0006]

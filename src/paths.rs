@@ -31,6 +31,11 @@ pub fn config_file() -> Result<PathBuf> {
     Ok(config_dir()?.join("jimtime.toml"))
 }
 
+/// The Harvest config, beside the main one. [ADR-0006]
+pub fn harvest_config_file() -> Result<PathBuf> {
+    Ok(config_dir()?.join(crate::config::HARVEST_FILE))
+}
+
 /// The pre-ADR-0006 repo->Harvest mapping, read only by `config migrate`.
 pub fn legacy_mapping_file() -> Result<PathBuf> {
     Ok(config_dir()?.join("harvest-projects.json"))
