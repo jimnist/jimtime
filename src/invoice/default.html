@@ -69,39 +69,41 @@
     text-transform: uppercase; color: var(--muted); margin-bottom: 4pt;
   }
 
-  table.items { width: 100%; border-collapse: collapse; }
+  /* Line items, as the Harvest invoices listed them: one row per entry
+     (Item type, Description, Quantity, Unit price, Amount), columns split by
+     thin rules, alternate rows shaded. */
+  table.items { width: 100%; border-collapse: collapse; font-size: 9pt; line-height: 1.35; }
   table.items th {
-    font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
-    color: var(--muted); text-align: left; padding: 0 0 5pt; border-bottom: 1pt solid var(--rule);
+    font-size: 8pt; font-weight: 600; text-align: left;
+    padding: 0 8pt 5pt; border-bottom: 0.75pt solid var(--rule);
   }
+  table.items td { padding: 8pt; border-bottom: 0.75pt solid var(--rule); vertical-align: top; }
+  table.items th + th, table.items td + td { border-left: 0.75pt solid var(--rule); }
+  table.items th:first-child, table.items td:first-child { padding-left: 0; }
+  table.items th:last-child, table.items td:last-child { padding-right: 0; }
+  table.items tbody tr:nth-child(even) td { background: var(--soft); }
   table.items th.num { text-align: right; }
-  table.items td { padding: 7pt 0; border-bottom: 0.75pt solid var(--rule); vertical-align: top; }
-  table.items td + td, table.items th + th { padding-left: 14pt; }
-  /* Summary rows stay whole; long detail rows may continue on the next page
-     rather than leaving a gap, but never strand a lone line. */
-  .summary tr { break-inside: avoid; }
+  table.items td.type { width: 0.9in; }
+  table.items td.amount { font-weight: 600; }
+  /* Long rows may continue on the next page rather than leaving a gap, but
+     never strand a lone line; the header repeats on each page. */
   table.items td { orphans: 3; widows: 3; }
   thead { display: table-header-group; }
 
-  .totals { display: flex; justify-content: flex-end; margin-top: 14pt; }
-  .totals table { border-collapse: collapse; min-width: 42%; }
+  .totals { display: flex; justify-content: flex-end; margin-top: 18pt; break-inside: avoid; }
+  .totals table { border-collapse: collapse; }
   .totals td { padding: 3pt 0; }
+  .totals td.k { color: var(--muted); font-size: 9pt; text-align: right; }
   .totals td.num { padding-left: 24pt; }
-  .totals tr.due td {
-    padding-top: 9pt; border-top: 1.5pt solid var(--ink);
-    font-size: 13pt; font-weight: 600;
-  }
+  .totals tr.due td { padding-top: 14pt; font-size: 13pt; }
+  .totals tr.due td.k { color: var(--ink); font-weight: 600; font-size: 11pt; }
 
   .pay {
     margin-top: 26pt; padding: 12pt 14pt; background: var(--soft);
     border-radius: 3pt; break-inside: avoid;
   }
-  .notes { margin-top: 14pt; }
-
-  .detail { break-before: page; }
-  .detail h2 { margin: 0 0 10pt; font-size: 12pt; font-weight: 600; }
-  .detail td.date { white-space: nowrap; color: var(--muted); }
-  .detail .task { color: var(--muted); font-size: 8.5pt; }
+  .notes { margin-top: 30pt; padding-top: 10pt; border-top: 0.75pt solid var(--rule); font-size: 9pt; }
+  .notes .label { text-transform: none; letter-spacing: 0; font-size: 8pt; color: var(--ink); }
 
   .draft {
     position: fixed; top: 42%; left: 0; right: 0; text-align: center;
@@ -146,22 +148,24 @@
   </div>
 </section>
 
-<table class="items summary">
+<table class="items">
   <thead>
     <tr>
+      <th>Item type</th>
       <th>Description</th>
-      <th class="num">Hours</th>
-      <th class="num">Rate</th>
+      <th class="num">Quantity</th>
+      <th class="num">Unit price</th>
       <th class="num">Amount</th>
     </tr>
   </thead>
   <tbody>
-    {% for g in groups %}
+    {% for l in lines %}
     <tr>
-      <td>{{ g.project_name }} <span class="muted">- {{ g.task_name }}</span></td>
-      <td class="num">{{ g.hours | hours }}</td>
-      <td class="num">{{ currency_symbol }}{{ g.rate | money }}</td>
-      <td class="num">{{ currency_symbol }}{{ g.amount | money }}</td>
+      <td class="type">Service</td>
+      <td>{{ l.project_name }} - {{ l.date | us_date }} - {{ l.task_name }}{% if business.contact_name %} / {{ business.contact_name }}{% endif %}: {{ l.notes }}</td>
+      <td class="num">{{ l.hours | hours }}</td>
+      <td class="num">{{ currency_symbol }}{{ l.rate | money }}</td>
+      <td class="num amount">{{ currency_symbol }}{{ l.amount | money }}</td>
     </tr>
     {% endfor %}
   </tbody>
@@ -169,10 +173,10 @@
 
 <div class="totals">
   <table>
-    <tr><td class="muted">Total hours</td><td class="num">{{ invoice.total_hours | hours }}</td></tr>
+    <tr><td class="k">Subtotal</td><td class="num">{{ currency_symbol }}{{ invoice.total | money }}</td></tr>
     <tr class="due">
-      <td>Amount due</td>
-      <td class="num">{{ currency_symbol }}{{ invoice.total | money }} <span class="muted" style="font-size:9pt;font-weight:400">{{ invoice.currency }}</span></td>
+      <td class="k">Amount due</td>
+      <td class="num">{{ currency_symbol }}{{ invoice.total | money }} <span class="muted" style="font-size:9pt">{{ invoice.currency }}</span></td>
     </tr>
   </table>
 </div>
@@ -183,30 +187,11 @@
   <div class="pre">{{ business.payment_instructions }}</div>
 </div>
 {% endif %}
-{% if invoice.notes %}<div class="notes pre muted">{{ invoice.notes }}</div>{% endif %}
-
-<section class="detail">
-  <h2>Time detail</h2>
-  <table class="items">
-    <thead>
-      <tr>
-        <th>Date</th>
-        <th>Work</th>
-        <th class="num">Hours</th>
-        <th class="num">Amount</th>
-      </tr>
-    </thead>
-    <tbody>
-      {% for l in lines %}
-      <tr>
-        <td class="date">{{ l.date }}</td>
-        <td>{{ l.notes }}<div class="task">{{ l.project_name }} - {{ l.task_name }}</div></td>
-        <td class="num">{{ l.hours | hours }}</td>
-        <td class="num">{{ currency_symbol }}{{ l.amount | money }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
+{% if invoice.notes %}
+<div class="notes">
+  <div class="label">Notes</div>
+  <div class="pre">{{ invoice.notes }}</div>
+</div>
+{% endif %}
 </body>
 </html>

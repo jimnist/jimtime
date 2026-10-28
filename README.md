@@ -336,7 +336,7 @@ The draft prints the number finalize will use, and finalize refuses to run if it
 
 #### Templates
 
-The built-in template is a clean US Letter layout with a header in the style of a Harvest invoice (From, Invoice ID, issue and due dates with their net terms, a subject line, Invoice for), then a summary by project and task, the amount due and payment instructions, then the time detail with a page footer.
+The built-in template is a clean US Letter layout in the style of a Harvest invoice: a header (From, Invoice ID, issue and due dates with their net terms, a subject line, Invoice for), one line per entry (Item type, Description, Quantity, Unit price, Amount), the subtotal and amount due, payment instructions and notes, and a page footer.
 The subject reads "Jim Nist Acme invoice from 9/1/2026 to 9/30/2026" when `business.contact_name` is set, and starts at the client's name when it is not.
 To make it yours, copy [`src/invoice/default.html`](src/invoice/default.html) into `$JIMTIME_HOME/config/templates/`, and set `invoice.template = "templates/invoice.html"` (or `template` on one client).
 It is plain HTML and CSS with [MiniJinja](https://docs.rs/minijinja) (Jinja2) tags; page size and margins come from CSS `@page`, and relative links such as a logo resolve next to the template.

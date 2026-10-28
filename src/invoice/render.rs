@@ -461,4 +461,21 @@ mod tests {
             "subject with one"
         );
     }
+
+    #[test]
+    fn body_lists_each_entry_as_a_harvest_style_line() {
+        let mut inv = invoice();
+        let page = html(&inv, None, false).unwrap();
+        assert!(page.contains(">Item type<") && page.contains(">Unit price<"));
+        assert_eq!(page.matches(">Service<").count(), 2, "one line per entry");
+        assert!(
+            page.contains("Web - 09/01/2026 - Dev: Built &lt;things&gt;"),
+            "description, notes still escaped"
+        );
+        assert!(page.contains(">Subtotal<") && page.contains("$1,725.00"));
+
+        inv.business.contact_name = Some("Jim Nist".into());
+        let page = html(&inv, None, false).unwrap();
+        assert!(page.contains("Web - 09/01/2026 - Dev / Jim Nist: Built"));
+    }
 }
