@@ -1,7 +1,11 @@
+mod cloud;
 mod commands;
+mod config;
+mod datarepo;
 mod daterange;
 mod harvest;
-mod mapping;
+mod invoice;
+mod merge;
 mod paths;
 mod repo;
 mod selection;
@@ -31,10 +35,14 @@ register_commands! {
     Approve
     Unapprove
     Report
+    Invoice
     Harvest
+    Cloud
+    Config
+    Data
 }
 
-// Async for the Harvest API.
+// Async for the Harvest, SMTP and cloud APIs.
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();

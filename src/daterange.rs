@@ -26,9 +26,27 @@ pub struct RangeArgs {
     /// Last week (Monday–Sunday)
     #[arg(long)]
     last_week: bool,
+    /// The current calendar month
+    #[arg(long)]
+    month: bool,
+    /// Last calendar month
+    #[arg(long)]
+    last_month: bool,
 }
 
 impl RangeArgs {
+    /// Whether any selector was given (so the today default was not used).
+    pub fn is_set(&self) -> bool {
+        self.date.is_some()
+            || self.today
+            || self.week
+            || self.last_week
+            || self.month
+            || self.last_month
+            || self.from.is_some()
+            || self.to.is_some()
+    }
+
     /// Resolve to an inclusive `(from, to)` pair. Defaults to today when nothing
     /// is specified; errors if more than one selector is given.
     pub fn resolve(&self) -> Result<(NaiveDate, NaiveDate)> {
@@ -45,11 +63,20 @@ impl RangeArgs {
         if self.last_week {
             selectors += 1;
         }
+        if self.month {
+            selectors += 1;
+        }
+        if self.last_month {
+            selectors += 1;
+        }
         if self.from.is_some() || self.to.is_some() {
             selectors += 1;
         }
         if selectors > 1 {
-            bail!("choose only one of --date / --today / --week / --last-week / (--from & --to)");
+            bail!(
+                "choose only one of --date / --today / --week / --last-week / --month / \
+                 --last-month / (--from & --to)"
+            );
         }
 
         if let Some(d) = &self.date {
@@ -67,6 +94,13 @@ impl RangeArgs {
             return Ok(timeutil::week_of(
                 timeutil::today_naive()? - Duration::days(7),
             ));
+        }
+        if self.month {
+            return Ok(timeutil::month_of(timeutil::today_naive()?));
+        }
+        if self.last_month {
+            let (first, _) = timeutil::month_of(timeutil::today_naive()?);
+            return Ok(timeutil::month_of(first - Duration::days(1)));
         }
         if self.from.is_some() || self.to.is_some() {
             let (f, t) = match (&self.from, &self.to) {
@@ -111,6 +145,8 @@ mod tests {
             today: false,
             week: false,
             last_week: false,
+            month: false,
+            last_month: false,
         }
     }
 
@@ -164,6 +200,27 @@ mod tests {
             ..empty()
         };
         assert!(r.resolve().is_err());
+    }
+
+    #[test]
+    fn month_spans_first_to_last_day() {
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        assert_eq!(
+            timeutil::month_of(d("2024-02-10")),
+            (d("2024-02-01"), d("2024-02-29"))
+        );
+        assert_eq!(
+            timeutil::month_of(d("2026-12-31")),
+            (d("2026-12-01"), d("2026-12-31"))
+        );
+        let r = RangeArgs {
+            last_month: true,
+            ..empty()
+        };
+        let (f, t) = r.resolve().unwrap();
+        assert_eq!(f.format("%d").to_string(), "01");
+        assert!(t < timeutil::today_naive().unwrap());
+        assert!(r.is_set() && !empty().is_set());
     }
 
     #[test]

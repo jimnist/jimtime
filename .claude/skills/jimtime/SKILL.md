@@ -1,40 +1,40 @@
 ---
 name: jimtime
-description: Log, review, approve, and push billable time with the jimtime CLI. Use when the user wants to track time on the current work, or review/approve/push their hours to Harvest.
+description: Log, review, approve, and invoice billable time with the jimtime CLI (and optionally push it to Harvest). Use when the user wants to track time on the current work, review or approve their hours, or draft and send an invoice.
 disable-model-invocation: true
 ---
 
 # jimtime
 
-`jimtime` is the CLI that owns time tracking - the store, the repo→Harvest mapping, approval, dedup, and the Harvest push. The CLI is the product; you are the assistant that summarizes the user's work and calls it. Never reimplement its logic.
+`jimtime` is the CLI that owns time tracking - the store, the config, approval, invoicing, dedup, the auto-synced data repo, and the optional Harvest push. The CLI is the product; you are the assistant that summarizes the user's work and calls it. Never reimplement its logic, and never edit the data repo with git yourself - jimtime commits and pushes every change.
 
-Run commands from the git repo the work happened in - the mapping is keyed on the repo's toplevel path. Data lives in `$JIMTIME_HOME`; credentials are in the environment. Billing days are anchored to `$JIMTIME_TZ` (default `America/Los_Angeles`), not the machine clock, so never compute dates yourself - let the CLI resolve "today".
+Run commands from the git repo the work happened in - the mapping is keyed on the repo's toplevel path. Data lives in `$JIMTIME_HOME`; secrets are in the environment. Billing days are anchored to `$JIMTIME_TZ` (default `America/Los_Angeles`), not the machine clock, so never compute dates yourself - let the CLI resolve "today" and the range flags.
 
 ## Logging time - `jimtime add`
 
 When the user asks to log time for work in this session:
 
-1. Summarize what was done into a concise, invoice-friendly note - what shipped or changed, not a play-by-play.
+1. Summarize what was done into a concise, invoice-friendly note - what shipped or changed, not a play-by-play. It appears on the client's invoice.
 2. Estimate hours **conservatively**. Do not invent precise times. If unsure, round down and add `--needs-review`.
 3. Run from the working repo:
    ```
-   jimtime add --hours <H> --notes "<note>" [--needs-review] [--task <alias>] [--billable no]
+   jimtime add --hours <H> --notes "<note>" [--needs-review] [--task <key>] [--billable no]
    ```
-   Use `--from HH:MM --to HH:MM` instead of `--hours` only if the user gives real clock times.
+   Use `--from HH:MM --to HH:MM` instead of `--hours` only if the user gives real clock times. Task keys are in `[tasks]` of the config (`jimtime config check` lists them).
 4. Show the user exactly what you logged.
 
 Rules:
 - Conservative estimates; never pad.
 - `--needs-review` whenever the estimate is uncertain.
-- One entry per distinct chunk of work; use `--task <alias>` for a non-default task.
-- Never `approve`. Never `push` unless the user explicitly tells you to.
+- One entry per distinct chunk of work; `--task <key>` for a non-default task.
+- Never `approve`, `invoice finalize`, or `harvest push` unless the user explicitly tells you to.
 
 ## Reviewing - `jimtime review`
 
 ```
 jimtime review [<range>] [--pending]
 ```
-Lists each entry with its ID and status (`●` unapproved, `○` approved, `[needs review]`, `[imported]`) plus totals. `--pending` shows only unapproved entries - use it to show the user what's outstanding before approving. Range flags: `--today | --week | --last-week | --date YYYY-MM-DD | --from … --to …` (default today). If an entry is wrong, the user can edit the day's JSON in `$JIMTIME_HOME/entries/…` directly.
+Lists each entry with its ID and status (`●` unapproved, `○` approved, `[needs review]`, `[invoice N]`, `[imported]`) plus totals and how many are ready to invoice. `--pending` shows only unapproved entries - use it to show the user what's outstanding before approving. Range flags: `--today | --week | --last-week | --month | --last-month | --date YYYY-MM-DD | --from … --to …` (default today). If an entry is wrong, the user can edit the day's JSON in `$JIMTIME_HOME/entries/…`; `jimtime data sync` then validates and commits the edit.
 
 ## Approving - `jimtime approve` (user gate)
 
@@ -47,27 +47,43 @@ jimtime approve <range> --only <id> [--only <id>]       # approve just these (by
 ```
 `needs-review` entries are held by default (it prints which). Approving clears the flag. Run `jimtime review --pending <range>` first and show the user.
 
-To take an approval back, `jimtime unapprove` mirrors the same flags (`--except`, `--only`). It refuses entries already pushed to Harvest.
+To take an approval back, `jimtime unapprove` mirrors the same flags. It refuses entries already on an invoice or pushed to Harvest.
 
-## Pushing to Harvest - `jimtime harvest` (user gate)
+## Invoicing - `jimtime invoice` (user gate)
 
-Only on an explicit instruction to push. **Always dry-run first, show it, then push:**
+Only on an explicit instruction to invoice. **Always draft first, show the user, then finalize with the draft's fingerprint:**
+```
+jimtime invoice draft --client <key> <range>
+jimtime invoice finalize --client <key> <same range> --confirm <fingerprint>   # REAL: numbers, locks, emails the client
+```
+1. Run the draft. It opens the PDF on the user's screen and prints the total, recipients, a fingerprint, and notes about what was left out (unapproved time, or time also pushed to Harvest - relay those warnings).
+2. Tell the user the total and recipients and ask them to check the PDF. Wait for a clear go.
+3. Only then run the finalize line the draft printed, with its `--confirm <fingerprint>`. If it says the selection changed, draft again and re-confirm with the user - never work around it.
+
+`finalize` emails the PDF to the client; `--no-send` finalizes without emailing. If the user wants someone extra copied, pass `--cc <address>` to both the draft and the finalize (the draft prints the finalize line with it). If the email or cloud upload fails, the invoice is still issued - tell the user and offer the retry it names (`jimtime invoice send <number>` / `jimtime cloud upload <number>`). `jimtime invoice list` shows invoices with paid/open/overdue status and the outstanding total; `jimtime invoice paid <number> [--date YYYY-MM-DD]` records a payment when the user says one came in; `jimtime invoice void <number>` voids one (its entries become invoiceable again; only on explicit instruction). `jimtime invoice import-harvest` (read-only toward Harvest) brings Harvest's invoices, PDFs and billed time into the store - always run `--dry-run` first and show the user.
+
+## Pushing to Harvest - `jimtime harvest` (optional, user gate)
+
+Only if Harvest is enabled in the config and the user explicitly says to push. **Always dry-run first, show it, then push:**
 ```
 jimtime harvest dry-run <range>
-jimtime harvest push <range>     # creates REAL billable entries in Harvest; requires a clear go
+jimtime harvest push <range>     # creates REAL entries in Harvest; requires a clear go
 ```
-Re-running skips entries that already saved a Harvest id, so it won't double-push those. If a push *errors* (e.g. a timeout), the entry may still have been created in Harvest - tell the user to check there before re-running.
+Re-running skips entries that already saved a Harvest id. If a push *errors* (e.g. a timeout), the entry may still have been created in Harvest - tell the user to check there before re-running.
 
 ## Reference
 
-- `jimtime status` / `jimtime map` - the current repo's Harvest mapping
+- `jimtime status` / `jimtime map` - the current repo's mapping, rate, and data-repo sync state
 - `jimtime today [--create]` - today's log
 - `jimtime report <range> [--billable-only]` - markdown export to paste/share
-- `jimtime harvest projects | clients | tasks --project <id>` - browse Harvest to build the mapping (`$JIMTIME_HOME/config/harvest-projects.json`)
-- `jimtime harvest uninvoiced [--from … --to …] [--with-expenses]` - read-only: what each client owes for tracked-but-not-invoiced time, largest first (defaults to the last two months)
+- `jimtime config check` - validate the config and list clients, projects, tasks
+- `jimtime data status` / `jimtime data sync` - data repo state; commit hand edits and sync
+- `jimtime cloud status` - which invoice upload targets are ready
+- `jimtime harvest uninvoiced` - read-only, Harvest only: what each client owes there
 
 ## Safety
 
-- Never approve or push without an explicit user instruction.
+- Never approve, finalize, send, void, or push without an explicit user instruction.
+- Never finalize without the fingerprint from a draft the user has seen.
 - Time is stored exactly; never round it yourself.
-- Keep notes concise and invoice-friendly.
+- Keep notes concise and invoice-friendly - the client reads them.

@@ -20,10 +20,13 @@ re_export! {
     approve
     unapprove
     report
+    invoice
     harvest
+    cloud
+    config
+    data
 }
 
-#[async_trait::async_trait]
 pub trait Command {
     async fn run(&self) -> Result<()>;
 }
@@ -38,13 +41,12 @@ macro_rules! register_commands {
             )*
         }
 
-        impl std::ops::Deref for Commands {
-            type Target = dyn $crate::commands::Command;
-
-            fn deref(&self) -> &Self::Target {
-                match &self {
+        impl Commands {
+            async fn run(&self) -> anyhow::Result<()> {
+                use $crate::commands::Command;
+                match self {
                     $(
-                        Self::$command(c) => c,
+                        Self::$command(c) => c.run().await,
                     )*
                 }
             }

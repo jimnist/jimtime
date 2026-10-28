@@ -7,10 +7,10 @@ use crate::store::Section;
 
 #[derive(Args, Default)]
 pub struct FilterArgs {
-    /// Only sections for this client (exact, case-insensitive)
+    /// Only sections for this client: its key or its name (case-insensitive)
     #[arg(long)]
     client: Option<String>,
-    /// Only sections for this project (exact, case-insensitive)
+    /// Only sections for this project: its key or its name (case-insensitive)
     #[arg(long)]
     project: Option<String>,
     /// Only sections for this repo path
@@ -22,12 +22,12 @@ impl FilterArgs {
     /// Whether a section passes all provided filters.
     pub fn matches(&self, s: &Section) -> bool {
         if let Some(c) = &self.client
-            && !s.client_name.eq_ignore_ascii_case(c)
+            && !(s.client.eq_ignore_ascii_case(c) || s.client_name.eq_ignore_ascii_case(c))
         {
             return false;
         }
         if let Some(p) = &self.project
-            && !s.project_name.eq_ignore_ascii_case(p)
+            && !(s.project.eq_ignore_ascii_case(p) || s.project_name.eq_ignore_ascii_case(p))
         {
             return false;
         }
