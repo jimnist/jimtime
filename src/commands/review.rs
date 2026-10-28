@@ -63,7 +63,6 @@ impl Tally {
     }
 }
 
-#[async_trait::async_trait]
 impl Command for Review {
     async fn run(&self) -> Result<()> {
         let harvest = Config::load_optional()?.is_some_and(|c| c.harvest.enabled);

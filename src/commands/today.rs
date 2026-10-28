@@ -15,7 +15,6 @@ pub struct Today {
     create: bool,
 }
 
-#[async_trait::async_trait]
 impl Command for Today {
     async fn run(&self) -> Result<()> {
         let date = timeutil::today()?;

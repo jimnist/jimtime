@@ -90,7 +90,6 @@ enum HarvestCmd {
     },
 }
 
-#[async_trait::async_trait]
 impl Command for Harvest {
     async fn run(&self) -> Result<()> {
         // Off by default, and checked before any credential is looked up.

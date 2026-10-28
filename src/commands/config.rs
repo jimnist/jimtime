@@ -35,7 +35,6 @@ enum ConfigCmd {
     Path,
 }
 
-#[async_trait::async_trait]
 impl Command for Config {
     async fn run(&self) -> Result<()> {
         match &self.cmd {

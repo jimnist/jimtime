@@ -9,7 +9,6 @@ use crate::repo;
 #[derive(Args)]
 pub struct Map {}
 
-#[async_trait::async_trait]
 impl Command for Map {
     async fn run(&self) -> Result<()> {
         let repo = repo::current_repo()?;

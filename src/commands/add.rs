@@ -51,7 +51,6 @@ pub struct Add {
     notes: String,
 }
 
-#[async_trait::async_trait]
 impl Command for Add {
     async fn run(&self) -> Result<()> {
         let hours = self.resolve_hours()?;

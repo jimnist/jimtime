@@ -11,7 +11,6 @@ use crate::timeutil;
 #[derive(Args)]
 pub struct Status {}
 
-#[async_trait::async_trait]
 impl Command for Status {
     async fn run(&self) -> Result<()> {
         let repo = repo::current_repo()?;
