@@ -28,7 +28,6 @@ pub struct Unapprove {
     except: Vec<String>,
 }
 
-#[async_trait::async_trait]
 impl Command for Unapprove {
     async fn run(&self) -> Result<()> {
         let mut changed_lines: Vec<(String, f64, String, String)> = Vec::new();

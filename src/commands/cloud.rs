@@ -26,7 +26,6 @@ enum CloudCmd {
     Upload { number: String },
 }
 
-#[async_trait::async_trait]
 impl Command for Cloud {
     async fn run(&self) -> Result<()> {
         let config = Config::load()?;

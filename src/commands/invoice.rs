@@ -114,7 +114,6 @@ enum InvoiceCmd {
     },
 }
 
-#[async_trait::async_trait]
 impl Command for Invoice {
     async fn run(&self) -> Result<()> {
         match &self.cmd {

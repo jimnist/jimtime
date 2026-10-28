@@ -38,7 +38,6 @@ enum DataCmd {
     },
 }
 
-#[async_trait::async_trait]
 impl Command for Data {
     async fn run(&self) -> Result<()> {
         match &self.cmd {

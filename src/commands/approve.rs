@@ -64,7 +64,6 @@ impl Line {
     }
 }
 
-#[async_trait::async_trait]
 impl Command for Approve {
     async fn run(&self) -> Result<()> {
         let mut approved: Vec<Line> = Vec::new();
