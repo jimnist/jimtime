@@ -112,6 +112,7 @@ Everything else lives in `$JIMTIME_HOME/config/jimtime.toml`.
 ```toml
 [business]
 name = "Your Name"
+# contact_name = "Your Name"   # when name is a company or domain; goes in the invoice subject
 email = "you@example.com"
 address = """
 123 Main St
@@ -335,10 +336,11 @@ The draft prints the number finalize will use, and finalize refuses to run if it
 
 #### Templates
 
-The built-in template is a clean US Letter layout: a summary by project and task, the amount due and payment instructions, then the time detail with a page footer.
+The built-in template is a clean US Letter layout with a header in the style of a Harvest invoice (From, Invoice ID, issue and due dates with their net terms, a subject line, Invoice for), then a summary by project and task, the amount due and payment instructions, then the time detail with a page footer.
+The subject reads "Jim Nist Acme invoice from 9/1/2026 to 9/30/2026" when `business.contact_name` is set, and starts at the client's name when it is not.
 To make it yours, copy [`src/invoice/default.html`](src/invoice/default.html) into `$JIMTIME_HOME/config/templates/`, and set `invoice.template = "templates/invoice.html"` (or `template` on one client).
 It is plain HTML and CSS with [MiniJinja](https://docs.rs/minijinja) (Jinja2) tags; page size and margins come from CSS `@page`, and relative links such as a logo resolve next to the template.
-The context is `invoice`, `business`, `client`, `lines` (one per entry), `groups` (per project/task/rate), `currency_symbol` and `draft`, with filters `money`, `hours` and `css_string`.
+The context is `invoice`, `business`, `client`, `lines` (one per entry), `groups` (per project/task/rate), `currency_symbol`, `net_days` (issue to due, for "Net 30") and `draft`, with filters `money`, `hours`, `css_string`, and `us_date` / `us_date_short` (`2026-09-07` as `09/07/2026` / `9/7/2026`).
 The email subject and body under `[email]` are templates with the same context.
 
 ### Push to Harvest (optional)

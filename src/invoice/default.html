@@ -42,29 +42,32 @@
   .muted { color: var(--muted); }
   .pre { white-space: pre-line; }
 
+  /* The header follows the Harvest invoices jimtime replaced: a large plain
+     INVOICE, and label | value pairs split by a thin rule. */
   header { display: flex; justify-content: space-between; align-items: flex-start; }
-  .from-name { font-size: 17pt; font-weight: 600; letter-spacing: -0.01em; }
-  .from-lines { margin-top: 4pt; color: var(--muted); }
-  .title { text-align: right; }
-  .title h1 {
-    margin: 0; font-size: 22pt; font-weight: 300; letter-spacing: 0.12em;
-    text-transform: uppercase; color: var(--accent);
-  }
-  .title .number { margin-top: 2pt; font-size: 11pt; font-weight: 600; }
+  header h1 { margin: 0; font-size: 26pt; font-weight: 400; letter-spacing: 0.01em; text-transform: uppercase; }
+
+  .kv { display: flex; align-items: flex-start; }
+  .kv .k { color: var(--muted); font-size: 9pt; padding: 2pt 9pt 2pt 0; white-space: nowrap; }
+  .kv .v { border-left: 0.75pt solid var(--rule); padding: 1pt 0 1pt 9pt; }
+  .from { margin-top: 4pt; }
+  .from .name { font-weight: 600; font-size: 11pt; }
+  .from .lines { color: var(--muted); }
 
   .parties {
     display: flex; justify-content: space-between; align-items: flex-start; gap: 24pt;
-    margin: 28pt 0 22pt; padding-top: 14pt; border-top: 1.5pt solid var(--ink);
+    margin: 56pt 0 36pt;
   }
+  .facts { border-collapse: collapse; }
+  .facts td { padding: 2pt 0; vertical-align: top; }
+  .facts td.k { color: var(--muted); font-size: 9pt; padding-right: 9pt; white-space: nowrap; }
+  .facts td.v { border-left: 0.75pt solid var(--rule); padding-left: 9pt; max-width: 2.6in; }
+  .facts td.id { font-weight: 600; }
+  .bill-to .name { font-weight: 600; font-size: 11pt; }
   .label {
     font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em;
     text-transform: uppercase; color: var(--muted); margin-bottom: 4pt;
   }
-  .bill-to .name { font-weight: 600; font-size: 11pt; }
-  .facts { border-collapse: collapse; }
-  .facts td { padding: 1.5pt 0; }
-  .facts td:first-child { color: var(--muted); padding-right: 14pt; }
-  .facts td:last-child { text-align: right; }
 
   table.items { width: 100%; border-collapse: collapse; }
   table.items th {
@@ -111,33 +114,36 @@
 {% if draft %}<div class="draft">DRAFT</div>{% endif %}
 
 <header>
-  <div>
-    <div class="from-name">{{ business.name }}</div>
-    <div class="from-lines">
-      {% if business.address %}<div class="pre">{{ business.address }}</div>{% endif %}
-      {% if business.email %}<div>{{ business.email }}</div>{% endif %}
-      {% if business.phone %}<div>{{ business.phone }}</div>{% endif %}
-      {% if business.website %}<div>{{ business.website }}</div>{% endif %}
-      {% if business.tax_id %}<div>Tax ID {{ business.tax_id }}</div>{% endif %}
+  <h1>Invoice</h1>
+  <div class="kv from">
+    <div class="k">From</div>
+    <div class="v">
+      <div class="name">{{ business.name }}</div>
+      <div class="lines">
+        {% if business.address %}<div class="pre">{{ business.address }}</div>{% endif %}
+        {% if business.email %}<div>{{ business.email }}</div>{% endif %}
+        {% if business.phone %}<div>{{ business.phone }}</div>{% endif %}
+        {% if business.website %}<div>{{ business.website }}</div>{% endif %}
+        {% if business.tax_id %}<div>Tax ID {{ business.tax_id }}</div>{% endif %}
+      </div>
     </div>
-  </div>
-  <div class="title">
-    <h1>Invoice</h1>
-    <div class="number">{{ invoice.number }}</div>
   </div>
 </header>
 
 <section class="parties">
-  <div class="bill-to">
-    <div class="label">Bill to</div>
-    <div class="name">{{ client.name }}</div>
-    {% if client.address %}<div class="pre muted">{{ client.address }}</div>{% endif %}
-  </div>
   <table class="facts">
-    <tr><td>Issued</td><td>{{ invoice.issue_date }}</td></tr>
-    <tr><td>Due</td><td>{{ invoice.due_date }}</td></tr>
-    <tr><td>Period</td><td>{{ invoice.period_from }} to {{ invoice.period_to }}</td></tr>
+    <tr><td class="k">Invoice ID</td><td class="v id">{{ invoice.number }}</td></tr>
+    <tr><td class="k">Issue date</td><td class="v">{{ invoice.issue_date | us_date }}</td></tr>
+    <tr><td class="k">Due date</td><td class="v">{{ invoice.due_date | us_date }}{% if net_days %} (Net {{ net_days }}){% endif %}</td></tr>
+    <tr><td class="k">Subject</td><td class="v">{% if business.contact_name %}{{ business.contact_name }} {% endif %}{{ client.name }} invoice from {{ invoice.period_from | us_date_short }} to {{ invoice.period_to | us_date_short }}</td></tr>
   </table>
+  <div class="kv bill-to">
+    <div class="k">Invoice for</div>
+    <div class="v">
+      <div class="name">{{ client.name }}</div>
+      {% if client.address %}<div class="pre">{{ client.address }}</div>{% endif %}
+    </div>
+  </div>
 </section>
 
 <table class="items summary">
