@@ -27,7 +27,6 @@ struct Row {
     notes: String,
 }
 
-#[async_trait::async_trait]
 impl Command for Report {
     async fn run(&self) -> Result<()> {
         let mut groups: BTreeMap<(String, String, String), Vec<Row>> = BTreeMap::new();

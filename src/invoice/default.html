@@ -1,0 +1,197 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Invoice {{ invoice.number }} - {{ business.name }}</title>
+<style>
+  /* jimtime's built-in invoice template. Copy it into your config dir and
+     point `invoice.template` at the copy to make it your own. The context:
+     invoice, business, client, lines, groups, currency_symbol, draft; and the
+     filters `money` (1,234.50), `hours` (1.25), and `css_string` for values
+     placed inside a CSS string, as in the page footer below. */
+  @page {
+    size: Letter;
+    margin: 0.75in 0.75in 0.8in;
+    @bottom-left {
+      content: "{{ business.name | css_string }} · Invoice {{ invoice.number | css_string }}";
+      font: 7.5pt -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: #6a6e75;
+    }
+    @bottom-right {
+      content: "Page " counter(page) " of " counter(pages);
+      font: 7.5pt -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+      color: #6a6e75;
+    }
+  }
+  :root {
+    --ink: #1c1d1f;
+    --muted: #6a6e75;
+    --rule: #dcdfe3;
+    --soft: #f4f5f7;
+    --accent: #2f5d8a;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  body {
+    margin: 0;
+    color: var(--ink);
+    font: 10pt/1.45 -apple-system, BlinkMacSystemFont, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+  }
+  .num { text-align: right; white-space: nowrap; }
+  .muted { color: var(--muted); }
+  .pre { white-space: pre-line; }
+
+  /* The header follows the Harvest invoices jimtime replaced: a large plain
+     INVOICE, and label | value pairs split by a thin rule. */
+  header { display: flex; justify-content: space-between; align-items: flex-start; }
+  header h1 { margin: 0; font-size: 26pt; font-weight: 400; letter-spacing: 0.01em; text-transform: uppercase; }
+
+  .kv { display: flex; align-items: flex-start; }
+  .kv .k { color: var(--muted); font-size: 9pt; padding: 2pt 9pt 2pt 0; white-space: nowrap; }
+  .kv .v { border-left: 0.75pt solid var(--rule); padding: 1pt 0 1pt 9pt; }
+  .from { margin-top: 4pt; }
+  .from .name { font-weight: 600; font-size: 11pt; }
+  .from .lines { color: var(--muted); }
+
+  .parties {
+    display: flex; justify-content: space-between; align-items: flex-start; gap: 24pt;
+    margin: 56pt 0 36pt;
+  }
+  .facts { border-collapse: collapse; }
+  .facts td { padding: 2pt 0; vertical-align: top; }
+  .facts td.k { color: var(--muted); font-size: 9pt; padding-right: 9pt; white-space: nowrap; }
+  .facts td.v { border-left: 0.75pt solid var(--rule); padding-left: 9pt; max-width: 2.6in; }
+  .facts td.id { font-weight: 600; }
+  .bill-to .name { font-weight: 600; font-size: 11pt; }
+  .label {
+    font-size: 7.5pt; font-weight: 600; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--muted); margin-bottom: 4pt;
+  }
+
+  /* Line items, as the Harvest invoices listed them: one row per entry
+     (Item type, Description, Quantity, Unit price, Amount), columns split by
+     thin rules, alternate rows shaded. */
+  table.items { width: 100%; border-collapse: collapse; font-size: 9pt; line-height: 1.35; }
+  table.items th {
+    font-size: 8pt; font-weight: 600; text-align: left;
+    padding: 0 8pt 5pt; border-bottom: 0.75pt solid var(--rule);
+  }
+  table.items td { padding: 8pt; border-bottom: 0.75pt solid var(--rule); vertical-align: top; }
+  table.items th + th, table.items td + td { border-left: 0.75pt solid var(--rule); }
+  table.items th:first-child, table.items td:first-child { padding-left: 0; }
+  table.items th:last-child, table.items td:last-child { padding-right: 0; }
+  table.items tbody tr:nth-child(even) td { background: var(--soft); }
+  table.items th.num { text-align: right; }
+  table.items td.type { width: 0.9in; }
+  table.items td.amount { font-weight: 600; }
+  /* Long rows may continue on the next page rather than leaving a gap, but
+     never strand a lone line; the header repeats on each page. */
+  table.items td { orphans: 3; widows: 3; }
+  thead { display: table-header-group; }
+
+  .totals { display: flex; justify-content: flex-end; margin-top: 18pt; break-inside: avoid; }
+  .totals table { border-collapse: collapse; }
+  .totals td { padding: 3pt 0; }
+  .totals td.k { color: var(--muted); font-size: 9pt; text-align: right; }
+  .totals td.num { padding-left: 24pt; }
+  .totals tr.due td { padding-top: 14pt; font-size: 13pt; }
+  .totals tr.due td.k { color: var(--ink); font-weight: 600; font-size: 11pt; }
+
+  .pay {
+    margin-top: 26pt; padding: 12pt 14pt; background: var(--soft);
+    border-radius: 3pt; break-inside: avoid;
+  }
+  .notes { margin-top: 30pt; padding-top: 10pt; border-top: 0.75pt solid var(--rule); font-size: 9pt; }
+  .notes .label { text-transform: none; letter-spacing: 0; font-size: 8pt; color: var(--ink); }
+
+  .draft {
+    position: fixed; top: 42%; left: 0; right: 0; text-align: center;
+    font-size: 110pt; font-weight: 700; letter-spacing: 0.08em;
+    color: rgba(200, 40, 40, 0.09); transform: rotate(-24deg); pointer-events: none;
+  }
+</style>
+</head>
+<body>
+{% if draft %}<div class="draft">DRAFT</div>{% endif %}
+
+<header>
+  <h1>Invoice</h1>
+  <div class="kv from">
+    <div class="k">From</div>
+    <div class="v">
+      <div class="name">{{ business.name }}</div>
+      <div class="lines">
+        {% if business.address %}<div class="pre">{{ business.address }}</div>{% endif %}
+        {% if business.email %}<div>{{ business.email }}</div>{% endif %}
+        {% if business.phone %}<div>{{ business.phone }}</div>{% endif %}
+        {% if business.website %}<div>{{ business.website }}</div>{% endif %}
+        {% if business.tax_id %}<div>Tax ID {{ business.tax_id }}</div>{% endif %}
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="parties">
+  <table class="facts">
+    <tr><td class="k">Invoice ID</td><td class="v id">{{ invoice.number }}</td></tr>
+    <tr><td class="k">Issue date</td><td class="v">{{ invoice.issue_date | us_date }}</td></tr>
+    <tr><td class="k">Due date</td><td class="v">{{ invoice.due_date | us_date }}{% if net_days %} (Net {{ net_days }}){% endif %}</td></tr>
+    <tr><td class="k">Subject</td><td class="v">{% if business.contact_name %}{{ business.contact_name }} {% endif %}{{ client.name }} invoice from {{ invoice.period_from | us_date_short }} to {{ invoice.period_to | us_date_short }}</td></tr>
+  </table>
+  <div class="kv bill-to">
+    <div class="k">Invoice for</div>
+    <div class="v">
+      <div class="name">{{ client.name }}</div>
+      {% if client.address %}<div class="pre">{{ client.address }}</div>{% endif %}
+    </div>
+  </div>
+</section>
+
+<table class="items">
+  <thead>
+    <tr>
+      <th>Item type</th>
+      <th>Description</th>
+      <th class="num">Quantity</th>
+      <th class="num">Unit price</th>
+      <th class="num">Amount</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for l in lines %}
+    <tr>
+      <td class="type">Service</td>
+      <td>{{ l.project_name }} - {{ l.date | us_date }} - {{ l.task_name }}{% if business.contact_name %} / {{ business.contact_name }}{% endif %}: {{ l.notes }}</td>
+      <td class="num">{{ l.hours | hours }}</td>
+      <td class="num">{{ currency_symbol }}{{ l.rate | money }}</td>
+      <td class="num amount">{{ currency_symbol }}{{ l.amount | money }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+
+<div class="totals">
+  <table>
+    <tr><td class="k">Subtotal</td><td class="num">{{ currency_symbol }}{{ invoice.total | money }}</td></tr>
+    <tr class="due">
+      <td class="k">Amount due</td>
+      <td class="num">{{ currency_symbol }}{{ invoice.total | money }} <span class="muted" style="font-size:9pt">{{ invoice.currency }}</span></td>
+    </tr>
+  </table>
+</div>
+
+{% if business.payment_instructions %}
+<div class="pay">
+  <div class="label">Payment</div>
+  <div class="pre">{{ business.payment_instructions }}</div>
+</div>
+{% endif %}
+{% if invoice.notes %}
+<div class="notes">
+  <div class="label">Notes</div>
+  <div class="pre">{{ invoice.notes }}</div>
+</div>
+{% endif %}
+</body>
+</html>
