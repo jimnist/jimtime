@@ -45,6 +45,10 @@ pub struct Config {
 pub struct Business {
     #[serde(default)]
     pub name: String,
+    /// The person behind the business, when the business name is not a
+    /// person's (a domain, a company). The built-in template puts it in the
+    /// invoice subject, as Harvest did: "Jim Nist Acme invoice from ...".
+    pub contact_name: Option<String>,
     pub email: Option<String>,
     pub phone: Option<String>,
     pub website: Option<String>,

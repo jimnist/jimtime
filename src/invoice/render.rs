@@ -67,6 +67,11 @@ fn environment() -> Environment<'static> {
     env.add_filter("css_string", |v: String| {
         minijinja::Value::from_safe_string(css_string(&v))
     });
+    // US dates, as the Harvest invoices showed them: 09/17/2026, or 9/17/2026.
+    // Marked safe only when the input parsed: then the output is digits and
+    // slashes, which HTML escaping would otherwise turn into `&#x2f;`.
+    env.add_filter("us_date", |v: String| us_date_value(&v, true));
+    env.add_filter("us_date_short", |v: String| us_date_value(&v, false));
     // Optional fields can be tested with `{% if %}`, but printing a typo'd
     // variable is an error rather than a silent blank on a client's invoice.
     env.set_undefined_behavior(minijinja::UndefinedBehavior::SemiStrict);
@@ -89,6 +94,32 @@ fn css_string(v: &str) -> String {
     out
 }
 
+/// `YYYY-MM-DD` as `MM/DD/YYYY` (`pad`) or `M/D/YYYY`. Anything that is not
+/// such a date prints unchanged, so a template never fails on one.
+fn us_date(iso: &str, pad: bool) -> String {
+    match chrono::NaiveDate::parse_from_str(iso, "%Y-%m-%d") {
+        Ok(d) if pad => d.format("%m/%d/%Y").to_string(),
+        Ok(d) => d.format("%-m/%-d/%Y").to_string(),
+        Err(_) => iso.to_string(),
+    }
+}
+
+fn us_date_value(iso: &str, pad: bool) -> minijinja::Value {
+    let out = us_date(iso, pad);
+    if out == iso {
+        minijinja::Value::from(out) // not a date: escape it like any other text
+    } else {
+        minijinja::Value::from_safe_string(out)
+    }
+}
+
+/// Days from issue to due, the "Net 30" on an invoice. None if either date
+/// does not parse.
+fn net_days(inv: &Invoice) -> Option<i64> {
+    let day = |s: &str| chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").ok();
+    Some((day(&inv.due_date)? - day(&inv.issue_date)?).num_days())
+}
+
 /// The context every template (invoice, email subject and body) sees.
 fn ctx(inv: &Invoice, draft: bool) -> minijinja::Value {
     context! {
@@ -98,6 +129,7 @@ fn ctx(inv: &Invoice, draft: bool) -> minijinja::Value {
         lines => &inv.lines,
         groups => groups(inv),
         currency_symbol => currency_symbol(&inv.currency),
+        net_days => net_days(inv),
         draft => draft,
     }
 }
@@ -385,5 +417,48 @@ mod tests {
     #[test]
     fn a_typo_in_a_template_is_an_error_not_a_blank() {
         assert!(text("{{ invoice.nubmer }}", &invoice()).is_err());
+    }
+
+    #[test]
+    fn us_dates_pad_or_not_and_leave_non_dates_alone() {
+        assert_eq!(us_date("2026-09-07", true), "09/07/2026");
+        assert_eq!(us_date("2026-09-07", false), "9/7/2026");
+        assert_eq!(us_date("DRAFT", true), "DRAFT");
+    }
+
+    #[test]
+    fn net_days_is_due_minus_issue() {
+        let mut inv = invoice();
+        inv.issue_date = "2026-09-30".into();
+        inv.due_date = "2026-10-30".into();
+        assert_eq!(net_days(&inv), Some(30));
+        inv.due_date = "soon".into();
+        assert_eq!(net_days(&inv), None);
+    }
+
+    #[test]
+    fn header_follows_the_harvest_layout() {
+        let mut inv = invoice();
+        inv.issue_date = "2026-09-30".into();
+        inv.due_date = "2026-10-30".into();
+        let page = html(&inv, None, false).unwrap();
+        assert!(page.contains(">Invoice ID<"));
+        assert!(page.contains("09/30/2026"), "issue date, US style");
+        assert!(
+            page.contains("10/30/2026 (Net 30)"),
+            "due date with its terms"
+        );
+        assert!(page.contains(">Invoice for<"));
+        assert!(
+            page.contains("Acme invoice from 9/30/2026 to 9/30/2026"),
+            "subject without a contact"
+        );
+
+        inv.business.contact_name = Some("Jim Nist".into());
+        let page = html(&inv, None, false).unwrap();
+        assert!(
+            page.contains("Jim Nist Acme invoice from 9/30/2026 to 9/30/2026"),
+            "subject with one"
+        );
     }
 }
