@@ -58,21 +58,21 @@ impl Command for Report {
             }
         }
 
-        println!("# Time Report - {}\n", self.range.label()?);
+        outln!("# Time Report - {}\n", self.range.label()?);
         if groups.is_empty() {
-            println!("_No entries._");
+            outln!("_No entries._");
             return Ok(());
         }
 
         let (mut grand_total, mut grand_billable, mut grand_count) = (0.0, 0.0, 0usize);
         for ((client, project, task), rows) in &groups {
-            println!("## {client} - {project} - {task}\n");
-            println!("| Date | Hours | Billable | Notes |");
-            println!("|---|---:|:---:|---|");
+            outln!("## {client} - {project} - {task}\n");
+            outln!("| Date | Hours | Billable | Notes |");
+            outln!("|---|---:|:---:|---|");
             let mut total = 0.0;
             let mut billable = 0.0;
             for r in rows {
-                println!(
+                outln!(
                     "| {} | {} | {} | {} |",
                     r.date,
                     fmt_hours(r.hours),
@@ -84,7 +84,7 @@ impl Command for Report {
                     billable += r.hours;
                 }
             }
-            println!(
+            outln!(
                 "\n**Subtotal: {}h ({}h billable)**\n",
                 fmt_hours(total),
                 fmt_hours(billable)
@@ -94,8 +94,8 @@ impl Command for Report {
             grand_count += rows.len();
         }
 
-        println!("---\n");
-        println!(
+        outln!("---\n");
+        outln!(
             "**Total: {}h across {} entr{} ({}h billable)**",
             fmt_hours(grand_total),
             grand_count,
