@@ -87,20 +87,20 @@ impl Command for Review {
         }
 
         let scope = if self.pending { " (pending only)" } else { "" };
-        println!("Review: {}{}\n", self.range.label()?, scope);
+        outln!("Review: {}{}\n", self.range.label()?, scope);
         if groups.is_empty() {
-            println!("  (no entries)");
+            outln!("  (no entries)");
             return Ok(());
         }
 
         let mut grand = Tally::default();
         for (label, rows) in &groups {
-            println!("{label}");
+            outln!("{label}");
             let mut t = Tally::default();
             for (_, e) in rows {
-                println!("  {}", e.id);
+                outln!("  {}", e.id);
                 let bill = if e.billable { "billable" } else { "non-bill" };
-                println!(
+                outln!(
                     "    {} {:>6}h  {:<8}  {}{}",
                     marker(e),
                     fmt_hours(e.hours),
@@ -110,7 +110,7 @@ impl Command for Review {
                 );
                 t.add(e);
             }
-            println!(
+            outln!(
                 "  Total: {}h · {} unapproved · {} needs-review · {}\n",
                 fmt_hours(t.total),
                 t.unapproved,
@@ -120,7 +120,7 @@ impl Command for Review {
             grand.merge(&t);
         }
 
-        println!(
+        outln!(
             "Totals: {}h ({}h billable) · {}",
             fmt_hours(grand.total),
             fmt_hours(grand.billable),
