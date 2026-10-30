@@ -47,9 +47,9 @@ pub async fn login(s: &GoogleDriveSettings) -> Result<String> {
         .append_pair("access_type", "offline")
         .append_pair("prompt", "consent")
         .append_pair("state", &state);
-    println!("Opening Google in your browser. If it does not open, visit:\n\n  {url}\n");
+    outln!("Opening Google in your browser. If it does not open, visit:\n\n  {url}\n");
     let _ = crate::invoice::render::open_url(url.as_str());
-    println!("Waiting for you to approve access...");
+    outln!("Waiting for you to approve access...");
 
     let code = tokio::time::timeout(
         std::time::Duration::from_secs(300),

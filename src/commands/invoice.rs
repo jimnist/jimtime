@@ -1,7 +1,7 @@
 use super::Command;
 use anyhow::{Context, Result, bail};
 use clap::{Args, Subcommand};
-use std::io::{IsTerminal, Write};
+use std::io::IsTerminal;
 use std::path::Path;
 
 use crate::cloud;
@@ -210,16 +210,16 @@ fn shell_quote(s: &str) -> String {
 }
 
 fn summary(config: &Config, i: &inv::Invoice, send: bool) {
-    println!("Invoice {} for {} ({})", i.number, i.client.name, i.client_key);
-    println!("  Period:      {} to {}", i.period_from, i.period_to);
-    println!("  Issued/due:  {} / {}", i.issue_date, i.due_date);
-    println!(
+    outln!("Invoice {} for {} ({})", i.number, i.client.name, i.client_key);
+    outln!("  Period:      {} to {}", i.period_from, i.period_to);
+    outln!("  Issued/due:  {} / {}", i.issue_date, i.due_date);
+    outln!(
         "  Lines:       {} entr{}, {}h",
         i.lines.len(),
         if i.lines.len() == 1 { "y" } else { "ies" },
         fmt_hours(i.total_hours)
     );
-    println!(
+    outln!(
         "  Total:       {}{} {}",
         currency_symbol(&i.currency),
         fmt_amount(i.total),
@@ -227,12 +227,12 @@ fn summary(config: &Config, i: &inv::Invoice, send: bool) {
     );
     if send {
         let r = i.recipients(config);
-        println!("  Email to:    {}", list_or_none(&r.to));
+        outln!("  Email to:    {}", list_or_none(&r.to));
         if !r.cc.is_empty() {
-            println!("  Cc:          {}", r.cc.join(", "));
+            outln!("  Cc:          {}", r.cc.join(", "));
         }
         if !r.bcc.is_empty() {
-            println!("  Bcc:         {}", r.bcc.join(", "));
+            outln!("  Bcc:         {}", r.bcc.join(", "));
         }
     }
 }
@@ -274,17 +274,17 @@ async fn draft(scope: &Scope, no_open: bool) -> Result<()> {
 
     summary(&config, &i, true);
     let fp = i.fingerprint(&config);
-    println!("  Fingerprint: {fp}");
+    outln!("  Fingerprint: {fp}");
     // Informational: finalize pulls first and computes it again.
     match next_number(&config, i.year).await {
-        Ok((n, _)) => println!("  Next number: {n}"),
+        Ok((n, _)) => outln!("  Next number: {n}"),
         Err(e) => eprintln!("warning: could not work out the next invoice number: {e:#}"),
     }
-    println!("\nPreview: {}", out.display());
+    outln!("\nPreview: {}", out.display());
     if !no_open {
         render::open(&out)?;
     }
-    println!(
+    outln!(
         "\nNothing was saved. To finalize exactly this invoice:\n  jimtime invoice finalize --client {}{} --from {} --to {}{} --confirm {fp}",
         scope.client,
         scope
@@ -344,7 +344,7 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
         Some(_) => summary(&config, &i, mailer.is_some()),
         None => {
             summary(&config, &i, mailer.is_some());
-            println!("\nPreview: {}", staged.display());
+            outln!("\nPreview: {}", staged.display());
             if !no_open {
                 render::open(&staged)?;
             }
@@ -355,7 +355,7 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
             };
             if !ask(&format!("\n{action}? [y/N] "))? {
                 let _ = std::fs::remove_file(&staged);
-                println!("Not finalized. Nothing was saved.");
+                outln!("Not finalized. Nothing was saved.");
                 return Ok(());
             }
         }
@@ -373,14 +373,14 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
         currency_symbol(&i.currency),
         fmt_amount(i.total)
     ))?;
-    println!("\nFinalized invoice {number}: {}", pdf.display());
+    outln!("\nFinalized invoice {number}: {}", pdf.display());
 
     if let Some(m) = &mailer {
         match m.send(&config, &i, &pdf).await {
             Ok(ev) => {
-                println!("Emailed to {}", ev.to.join(", "));
+                outln!("Emailed to {}", ev.to.join(", "));
                 if !ev.cc.is_empty() {
-                    println!("  Cc: {}", ev.cc.join(", "));
+                    outln!("  Cc: {}", ev.cc.join(", "));
                 }
                 i.sent.push(ev);
                 i.save()?;
@@ -430,9 +430,9 @@ async fn send(number: &str, extra_to: &[String], extra_cc: &[String]) -> Result<
     mailer.check_recipients(&config, &outgoing)?;
     let pdf = i.pdf_path()?;
     let ev = mailer.send(&config, &outgoing, &pdf).await?;
-    println!("Emailed invoice {number} to {}", ev.to.join(", "));
+    outln!("Emailed invoice {number} to {}", ev.to.join(", "));
     if !ev.cc.is_empty() {
-        println!("  Cc: {}", ev.cc.join(", "));
+        outln!("  Cc: {}", ev.cc.join(", "));
     }
     i.sent.push(ev);
     i.save()?;
@@ -460,13 +460,13 @@ fn void(number: &str) -> Result<()> {
     i.save()?;
     sync.commit(&format!("invoice: void {number}"))?;
 
-    println!(
+    outln!(
         "Voided invoice {number}. Its {} entr{} can be invoiced again; the number stays used.",
         i.lines.len(),
         if i.lines.len() == 1 { "y" } else { "ies" }
     );
     if let Some(last) = i.sent.last() {
-        println!(
+        outln!(
             "It was emailed to {} on {} - let them know it is void.",
             last.to.join(", "),
             last.at
@@ -481,10 +481,10 @@ fn list(client: Option<&str>) -> Result<()> {
         .filter(|i| client.is_none_or(|c| i.client_key == c))
         .collect();
     if all.is_empty() {
-        println!("No invoices.");
+        outln!("No invoices.");
         return Ok(());
     }
-    println!(
+    outln!(
         "{:<12} {:<10}  {:<24} {:>14}  STATUS",
         "NUMBER", "ISSUED", "CLIENT", "TOTAL"
     );
@@ -503,7 +503,7 @@ fn list(client: Option<&str>) -> Result<()> {
         } else {
             format!(" ({})", notes.join(", "))
         };
-        println!(
+        outln!(
             "{:<12} {:<10}  {:<24} {:>14}  {}{notes}",
             i.number,
             i.issue_date,
@@ -516,7 +516,7 @@ fn list(client: Option<&str>) -> Result<()> {
         }
     }
     for (currency, total) in outstanding {
-        println!("\nOutstanding: {} {currency}", fmt_amount(total));
+        outln!("\nOutstanding: {} {currency}", fmt_amount(total));
     }
     Ok(())
 }
@@ -533,7 +533,7 @@ fn paid(number: &str, date: Option<&str>, undo: bool) -> Result<()> {
         }
         i.save()?;
         sync.commit(&format!("invoice: {number} not paid"))?;
-        println!("Invoice {number} is no longer marked paid.");
+        outln!("Invoice {number} is no longer marked paid.");
         return Ok(());
     }
     let date = match date {
@@ -549,7 +549,7 @@ fn paid(number: &str, date: Option<&str>, undo: bool) -> Result<()> {
     i.paid_date = Some(date.clone());
     i.save()?;
     sync.commit(&format!("invoice: {number} paid {date}"))?;
-    println!(
+    outln!(
         "Invoice {number} ({} {}) paid on {date}.",
         fmt_amount(i.total),
         i.currency
@@ -566,14 +566,14 @@ async fn import_harvest(dry_run: bool) -> Result<()> {
     let r = crate::invoice::harvest_import::run(&config, &api, dry_run).await?;
 
     let verb = if dry_run { "Would" } else { "Did" };
-    println!("{verb} import from Harvest:");
+    outln!("{verb} import from Harvest:");
     let list = |v: &[String]| if v.is_empty() { "none".to_string() } else { v.join(", ") };
-    println!("  New invoice records:        {}", list(&r.records_new));
-    println!("  Changed in Harvest:         {}", list(&r.records_refreshed));
-    println!("  Unchanged:                  {}", list(&r.records_unchanged));
-    println!("  Entries locked to invoices: {}", r.locked);
-    println!("  Entries added, invoiced:    {}", r.backfilled_invoiced);
-    println!(
+    outln!("  New invoice records:        {}", list(&r.records_new));
+    outln!("  Changed in Harvest:         {}", list(&r.records_refreshed));
+    outln!("  Unchanged:                  {}", list(&r.records_unchanged));
+    outln!("  Entries locked to invoices: {}", r.locked);
+    outln!("  Entries added, invoiced:    {}", r.backfilled_invoiced);
+    outln!(
         "  Entries added, unbilled:    {}{}",
         r.backfilled_unbilled,
         if r.backfilled_unbilled > 0 {
@@ -583,13 +583,13 @@ async fn import_harvest(dry_run: bool) -> Result<()> {
         }
     );
     if !r.drafts_skipped.is_empty() {
-        println!(
+        outln!(
             "  Draft invoices skipped:     {} (not issued; import again once they are)",
             list(&r.drafts_skipped)
         );
     }
     if dry_run {
-        println!("\nNothing was written. Run without --dry-run to import.");
+        outln!("\nNothing was written. Run without --dry-run to import.");
         return Ok(());
     }
     sync.commit(&format!(
@@ -611,8 +611,8 @@ fn truncate(s: &str, width: usize) -> String {
 }
 
 fn ask(question: &str) -> Result<bool> {
-    print!("{question}");
-    std::io::stdout().flush()?;
+    out!("{question}");
+    crate::out::flush();
     let mut line = String::new();
     std::io::stdin().read_line(&mut line)?;
     Ok(matches!(line.trim(), "y" | "Y" | "yes" | "Yes"))

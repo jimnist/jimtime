@@ -39,20 +39,20 @@ impl Command for Cloud {
                     );
                 }
                 provider.login(&config).await?;
-                println!("Logged in to {}. The token is in the OS keychain.", provider.name());
+                outln!("Logged in to {}. The token is in the OS keychain.", provider.name());
             }
             CloudCmd::Logout { provider } => {
                 if provider.logout()? {
-                    println!("Removed the {} token from the keychain.", provider.name());
+                    outln!("Removed the {} token from the keychain.", provider.name());
                 } else {
-                    println!("Not logged in to {}.", provider.name());
+                    outln!("Not logged in to {}.", provider.name());
                 }
             }
             CloudCmd::Status => {
                 for p in Provider::ALL {
                     let configured = p.is_configured(&config);
                     let logged_in = p.refresh_token()?.is_some();
-                    println!(
+                    outln!(
                         "{:<13} {}",
                         p.name(),
                         match (configured, logged_in) {

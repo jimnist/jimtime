@@ -91,25 +91,25 @@ impl Command for Unapprove {
         }
 
         if changed_lines.is_empty() {
-            println!("Nothing to unapprove for {}.", self.range.label()?);
+            outln!("Nothing to unapprove for {}.", self.range.label()?);
         } else {
-            println!(
+            outln!(
                 "Unapproved {} entr{}:",
                 changed_lines.len(),
                 if changed_lines.len() == 1 { "y" } else { "ies" }
             );
             for (date, hours, label, id) in &changed_lines {
-                println!("  {date}  {}h  {label}  ({id})", fmt_hours(*hours));
+                outln!("  {date}  {}h  {label}  ({id})", fmt_hours(*hours));
             }
         }
         if skipped_imported > 0 {
-            println!(
+            outln!(
                 "\nLeft {skipped_imported} already-pushed entr{} approved (can't unapprove imported entries).",
                 if skipped_imported == 1 { "y" } else { "ies" }
             );
         }
         if skipped_invoiced > 0 {
-            println!(
+            outln!(
                 "\nLeft {skipped_invoiced} invoiced entr{} approved (void the invoice first: jimtime invoice void <number>).",
                 if skipped_invoiced == 1 { "y" } else { "ies" }
             );

@@ -1,3 +1,6 @@
+#[macro_use]
+mod out;
+
 mod cloud;
 mod commands;
 mod config;

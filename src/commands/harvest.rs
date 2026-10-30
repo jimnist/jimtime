@@ -107,13 +107,13 @@ impl Command for Harvest {
                         .cmp(&b.client.name.to_lowercase())
                         .then(a.name.to_lowercase().cmp(&b.name.to_lowercase()))
                 });
-                println!(
+                outln!(
                     "{:<28} {:>10}   {:<32} {:>10}  CODE",
                     "CLIENT", "CLIENT_ID", "PROJECT", "PROJECT_ID"
                 );
                 for p in &projects {
                     let flag = if p.is_active { "" } else { "  (archived)" };
-                    println!(
+                    outln!(
                         "{:<28} {:>10}   {:<32} {:>10}  {}{}",
                         truncate(&p.client.name, 28),
                         p.client.id,
@@ -128,23 +128,23 @@ impl Command for Harvest {
                 let api = HarvestApi::from_env()?;
                 let mut clients = api.list_clients(!all).await?;
                 clients.sort_by_key(|c| c.name.to_lowercase());
-                println!("{:<40} {:>10}", "CLIENT", "CLIENT_ID");
+                outln!("{:<40} {:>10}", "CLIENT", "CLIENT_ID");
                 for c in &clients {
                     let flag = if c.is_active { "" } else { "  (archived)" };
-                    println!("{:<40} {:>10}{}", truncate(&c.name, 40), c.id, flag);
+                    outln!("{:<40} {:>10}{}", truncate(&c.name, 40), c.id, flag);
                 }
             }
             HarvestCmd::Tasks { project } => {
                 let api = HarvestApi::from_env()?;
                 let tasks = api.task_assignments(*project).await?;
                 if tasks.is_empty() {
-                    println!("No task assignments found for project {project}.");
+                    outln!("No task assignments found for project {project}.");
                     return Ok(());
                 }
-                println!("{:<36} {:>10}  BILLABLE", "TASK", "TASK_ID");
+                outln!("{:<36} {:>10}  BILLABLE", "TASK", "TASK_ID");
                 for t in &tasks {
                     let flag = if t.is_active { "" } else { "  (archived)" };
-                    println!(
+                    outln!(
                         "{:<36} {:>10}  {}{}",
                         truncate(&t.task.name, 36),
                         t.task.id,
@@ -232,7 +232,7 @@ async fn uninvoiced(
         }
     }
 
-    println!("Uninvoiced - {} through {}\n", fmt_date(from), fmt_date(to));
+    outln!("Uninvoiced - {} through {}\n", fmt_date(from), fmt_date(to));
 
     let mut printed = 0usize;
     for (currency, clients) in &by_currency {
@@ -252,14 +252,14 @@ async fn uninvoiced(
         });
 
         if printed > 0 {
-            println!();
+            outln!();
         }
         printed += 1;
 
-        println!("{:<NAME_W$} {:>9}  {:>13}", "CLIENT", "HOURS", currency);
+        outln!("{:<NAME_W$} {:>9}  {:>13}", "CLIENT", "HOURS", currency);
         let mut grand = Totals::default();
         for (name, t) in &clients {
-            println!(
+            outln!(
                 "{:<NAME_W$} {:>9}  {:>13}",
                 truncate(name, NAME_W),
                 fmt_hours(t.hours),
@@ -269,8 +269,8 @@ async fn uninvoiced(
             grand.amount += t.amount;
             grand.expenses += t.expenses;
         }
-        println!("{}", "-".repeat(NAME_W + 25));
-        println!(
+        outln!("{}", "-".repeat(NAME_W + 25));
+        outln!(
             "{:<NAME_W$} {:>9}  {:>13}",
             format!(
                 "Total ({} client{})",
@@ -281,7 +281,7 @@ async fn uninvoiced(
             fmt_amount(grand.total(with_expenses))
         );
         if !with_expenses && grand.expenses != 0.0 {
-            println!(
+            outln!(
                 "Plus {} {currency} in uninvoiced expenses, not counted above (--with-expenses).",
                 fmt_amount(grand.expenses)
             );
@@ -289,7 +289,7 @@ async fn uninvoiced(
     }
 
     if printed == 0 {
-        println!("Nothing uninvoiced.");
+        outln!("Nothing uninvoiced.");
     }
     Ok(())
 }
@@ -358,7 +358,7 @@ fn dry_run(
     include_non_billable: bool,
 ) -> Result<()> {
     let dates = range.dates()?;
-    println!("Dry run: Harvest import - {}\n", range.label()?);
+    outln!("Dry run: Harvest import - {}\n", range.label()?);
 
     let mut count = 0usize;
     let mut total = 0.0;
@@ -372,12 +372,12 @@ fn dry_run(
                 if !e.is_pushable(include_non_billable) {
                     continue;
                 }
-                println!("{date}  {}h  {}", fmt_hours(e.hours), s.label());
-                println!("  id: {}", e.id);
+                outln!("{date}  {}h  {}", fmt_hours(e.hours), s.label());
+                outln!("  id: {}", e.id);
                 if let Err(err) = harvest_ids(config, s) {
-                    println!("  WILL FAIL: {err}");
+                    outln!("  WILL FAIL: {err}");
                 }
-                println!("  notes: {}", e.notes);
+                outln!("  notes: {}", e.notes);
                 count += 1;
                 total += e.hours;
             }
@@ -385,14 +385,14 @@ fn dry_run(
     }
 
     if count == 0 {
-        println!("Nothing eligible to push.");
+        outln!("Nothing eligible to push.");
     } else {
-        println!(
+        outln!(
             "\nTotal eligible: {count} entr{}, {}h",
             if count == 1 { "y" } else { "ies" },
             fmt_hours(total)
         );
-        println!("No entries were pushed.");
+        outln!("No entries were pushed.");
     }
     Ok(())
 }
@@ -415,7 +415,7 @@ pub(crate) async fn push(
     }
 
     let dates = range.dates()?;
-    println!("Pushing approved Harvest entries - {}\n", range.label()?);
+    outln!("Pushing approved Harvest entries - {}\n", range.label()?);
 
     let mut imported = 0usize;
     let mut total = 0.0;
@@ -461,7 +461,7 @@ pub(crate) async fn push(
                             );
                             return Err(save_err);
                         }
-                        println!("  {id} → Harvest time entry {harvest_id}");
+                        outln!("  {id} → Harvest time entry {harvest_id}");
                         imported += 1;
                         total += hours;
                     }
@@ -482,9 +482,9 @@ pub(crate) async fn push(
     }
 
     if imported == 0 {
-        println!("Nothing eligible to push.");
+        outln!("Nothing eligible to push.");
     } else {
-        println!(
+        outln!(
             "\nTotal imported: {imported} entr{}, {}h",
             if imported == 1 { "y" } else { "ies" },
             fmt_hours(total)
@@ -507,7 +507,7 @@ async fn unpush(
 ) -> Result<()> {
     let only_mode = !only.is_empty();
     let dates = range.dates()?;
-    println!("Unpushing Harvest entries - {}\n", range.label()?);
+    outln!("Unpushing Harvest entries - {}\n", range.label()?);
 
     let mut removed = 0usize;
     let mut total = 0.0;
@@ -544,7 +544,7 @@ async fn unpush(
                     );
                     return Err(save_err);
                 }
-                println!("  {id} ← removed Harvest time entry {harvest_id}");
+                outln!("  {id} ← removed Harvest time entry {harvest_id}");
                 removed += 1;
                 total += hours;
             }
@@ -560,9 +560,9 @@ async fn unpush(
     }
 
     if removed == 0 {
-        println!("Nothing to unpush.");
+        outln!("Nothing to unpush.");
     } else {
-        println!(
+        outln!(
             "\nTotal removed: {removed} entr{}, {}h",
             if removed == 1 { "y" } else { "ies" },
             fmt_hours(total)

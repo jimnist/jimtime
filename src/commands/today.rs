@@ -20,16 +20,16 @@ impl Command for Today {
         let date = timeutil::today()?;
 
         match Day::load(&date)? {
-            Some(day) => print!("{}", render_day(&day)),
+            Some(day) => out!("{}", render_day(&day)),
             None => {
                 if self.create {
                     let sync = Sync::begin("today", false)?;
                     let day = Day::new(&date);
                     day.save()?;
                     sync.commit(&format!("today: create {date}"))?;
-                    print!("{}", render_day(&day));
+                    out!("{}", render_day(&day));
                 } else {
-                    println!("No log yet for {date}. Add time with `jimtime add`, or pass --create.");
+                    outln!("No log yet for {date}. Add time with `jimtime add`, or pass --create.");
                 }
             }
         }

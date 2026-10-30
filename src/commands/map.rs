@@ -17,32 +17,32 @@ impl Command for Map {
         let task_key = &m.project.default_task;
         let task = config.task(task_key)?;
 
-        println!("Repo:             {}", repo.display());
-        println!(
+        outln!("Repo:             {}", repo.display());
+        outln!(
             "Client:           {} ({}){}",
             m.client.name,
             m.client_key,
             harvest(config.harvest_client_id(m.client_key))
         );
-        println!(
+        outln!(
             "Project:          {} ({}){}",
             m.project.name,
             m.project_key,
             harvest(config.harvest_project_id(m.client_key, m.project_key))
         );
-        println!(
+        outln!(
             "Default task:     {} ({}){}",
             task.name,
             task_key,
             harvest(config.harvest_task_id(task_key))
         );
-        println!(
+        outln!(
             "Billable default: {}",
             if m.project.billable { "yes" } else { "no" }
         );
         match config.rate(m.client_key, m.project_key, task_key) {
-            Ok(r) => println!("Rate:             {r} {}/h", m.client.currency),
-            Err(_) => println!("Rate:             (not set)"),
+            Ok(r) => outln!("Rate:             {r} {}/h", m.client.currency),
+            Err(_) => outln!("Rate:             (not set)"),
         }
         Ok(())
     }
