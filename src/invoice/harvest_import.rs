@@ -476,7 +476,7 @@ mod tests {
             [clients.mm]
             name = "Acme Corp"
             [clients.mm.projects.auto]
-            name = "Automations"
+            name = "Website"
             default_task = "programming"
             rate = 150.0
             [[repos]]
@@ -514,7 +514,7 @@ mod tests {
             },
             project: Named {
                 id: 20,
-                name: "Automations".into(),
+                name: "Website".into(),
             },
             task: Named {
                 id: 30,
@@ -650,7 +650,7 @@ mod tests {
     fn backfilled_sections_use_config_names_keys_and_ids() {
         let s = section_for(&config(), &te(1, 1.0, None)).unwrap();
         assert_eq!(s.key(), ("/nonexistent/mm", "mm", "auto", "programming"));
-        assert_eq!(s.label(), "Acme Corp - Automations - Programming");
+        assert_eq!(s.label(), "Acme Corp - Website - Programming");
         assert_eq!(s.harvest_task_id, Some(30));
     }
 }
