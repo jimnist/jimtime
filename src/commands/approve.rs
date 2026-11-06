@@ -54,7 +54,7 @@ struct Line {
 
 impl Line {
     fn print(&self) {
-        println!(
+        outln!(
             "  {}  {}h  {}  ({})",
             self.date,
             fmt_hours(self.hours),
@@ -143,23 +143,23 @@ impl Command for Approve {
         ))?;
 
         if approved.is_empty() && held_review.is_empty() && held_except.is_empty() {
-            println!("Nothing to approve for {}.", self.range.label()?);
+            outln!("Nothing to approve for {}.", self.range.label()?);
             return Ok(());
         }
 
         if !approved.is_empty() {
-            println!("Approved {}:", plural(approved.len()));
+            outln!("Approved {}:", plural(approved.len()));
             approved.iter().for_each(Line::print);
         }
         if !held_review.is_empty() {
-            println!(
+            outln!(
                 "\nHeld {} flagged needs-review (approve with --include-needs-review, or --only <id>):",
                 plural(held_review.len())
             );
             held_review.iter().for_each(Line::print);
         }
         if !held_except.is_empty() {
-            println!("\nHeld {} via --except:", plural(held_except.len()));
+            outln!("\nHeld {} via --except:", plural(held_except.len()));
             held_except.iter().for_each(Line::print);
         }
 
@@ -168,7 +168,7 @@ impl Command for Approve {
         if let Some(config) = &config
             && !approved.is_empty()
         {
-            println!();
+            outln!();
             let api = HarvestApi::from_env()?;
             super::push(&api, config, &self.range, &self.filter, false).await?;
         }
