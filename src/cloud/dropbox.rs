@@ -21,7 +21,7 @@ pub async fn login(s: &DropboxSettings) -> Result<String> {
         .append_pair("code_challenge_method", "S256")
         .append_pair("token_access_type", "offline");
 
-    println!("Opening Dropbox in your browser. If it does not open, visit:\n\n  {url}\n");
+    outln!("Opening Dropbox in your browser. If it does not open, visit:\n\n  {url}\n");
     let _ = crate::invoice::render::open_url(url.as_str());
     let code = prompt("Paste the code Dropbox shows you: ")?;
 
@@ -111,9 +111,8 @@ fn http_header_json(json: &str) -> String {
 }
 
 fn prompt(msg: &str) -> Result<String> {
-    use std::io::Write;
-    print!("{msg}");
-    std::io::stdout().flush()?;
+    out!("{msg}");
+    crate::out::flush();
     let mut line = String::new();
     std::io::stdin().read_line(&mut line)?;
     let line = line.trim().to_string();
