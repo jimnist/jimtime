@@ -679,7 +679,7 @@ mod tests {
             r#"{
               "repos": [{
                 "repo_path": "/code/mm", "client_id": 1, "client_name": "Acme Corp",
-                "project_id": 2, "project_name": "Automations",
+                "project_id": 2, "project_name": "Website",
                 "default_task_id": 3, "default_task_name": "Programming", "billable": true
               }],
               "aliases": {
@@ -694,9 +694,9 @@ mod tests {
         let c = Settings::from_texts(&text, Some(&render_harvest(&harvest))).unwrap();
         assert!(!c.harvest.enabled);
         assert_eq!(c.harvest_task_id("pm"), Some(4));
-        let p = &c.clients["acme-corp"].projects["automations"];
+        let p = &c.clients["acme-corp"].projects["website"];
         assert_eq!(p.default_task, "programming");
-        assert_eq!(c.harvest_project_id("acme-corp", "automations"), Some(2));
+        assert_eq!(c.harvest_project_id("acme-corp", "website"), Some(2));
         assert_eq!(c.harvest_client_id("acme-corp"), Some(1));
         assert_eq!(c.repos[0].client, "acme-corp");
         assert_eq!(keys.tasks[&4], "pm", "alias key, not slug of the name");
@@ -743,8 +743,8 @@ currency = "USD"
 email_to = ["payables@example.com"]   # hand edit
 harvest_id = 100001
 
-[clients.acme-corp.projects.automations]
-name = "Automations"
+[clients.acme-corp.projects.website]
+name = "Website"
 default_task = "programming"
 billable = true
 harvest_id = 200001
@@ -765,7 +765,7 @@ harvest_id = 200001
                 clients: vec![(
                     "acme-corp".into(),
                     100001,
-                    vec![("automations".into(), 200001)]
+                    vec![("website".into(), 200001)]
                 )],
             }
         );
@@ -785,7 +785,7 @@ harvest_id = 200001
         let c = Settings::from_texts(&main, Some(&render_harvest(&h))).unwrap();
         assert!(c.harvest.numbering && !c.harvest.enabled);
         assert_eq!(c.harvest_task_id("programming"), Some(300017));
-        assert_eq!(c.harvest_project_id("acme-corp", "automations"), Some(200001));
+        assert_eq!(c.harvest_project_id("acme-corp", "website"), Some(200001));
 
         // Splitting again finds nothing left to move.
         let (again, h2) = split_harvest(&main).unwrap();

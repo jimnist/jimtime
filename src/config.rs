@@ -701,8 +701,8 @@ mod tests {
         name = "Acme Corp"
         email_to = ["ap@example.com"]
 
-        [clients.acme-corp.projects.automations]
-        name = "Automations"
+        [clients.acme-corp.projects.website]
+        name = "Website"
         rate = 150.0
         task_rates = { pm = 100.0 }
         default_task = "programming"
@@ -710,7 +710,7 @@ mod tests {
         [[repos]]
         path = "/tmp/mm"
         client = "acme-corp"
-        project = "automations"
+        project = "website"
     "#;
 
     #[test]
@@ -720,26 +720,24 @@ mod tests {
         assert!(c.git.auto_sync);
         assert_eq!(c.invoice.number_format, "{year}-{seq:03}");
         assert_eq!(c.clients["acme-corp"].currency, "USD");
-        assert!(c.clients["acme-corp"].projects["automations"].billable);
+        assert!(c.clients["acme-corp"].projects["website"].billable);
     }
 
     #[test]
     fn task_rate_overrides_project_rate() {
         let c = Config::parse(SAMPLE).unwrap();
         assert_eq!(
-            c.rate("acme-corp", "automations", "programming").unwrap(),
+            c.rate("acme-corp", "website", "programming").unwrap(),
             150.0
         );
-        assert_eq!(c.rate("acme-corp", "automations", "pm").unwrap(), 100.0);
+        assert_eq!(c.rate("acme-corp", "website", "pm").unwrap(), 100.0);
     }
 
     #[test]
     fn missing_rate_is_an_error_naming_the_setting() {
         let text = SAMPLE.replace("rate = 150.0\n", "");
         let c = Config::parse(&text).unwrap();
-        let err = c
-            .rate("acme-corp", "automations", "programming")
-            .unwrap_err();
+        let err = c.rate("acme-corp", "website", "programming").unwrap_err();
         assert!(err.to_string().contains("set `rate`"), "{err}");
     }
 
@@ -751,7 +749,7 @@ mod tests {
 
     #[test]
     fn repo_mapping_to_unknown_project_fails_validation() {
-        let text = SAMPLE.replace("project = \"automations\"", "project = \"nope\"");
+        let text = SAMPLE.replace("project = \"website\"", "project = \"nope\"");
         assert!(Config::parse(&text).is_err());
     }
 
@@ -782,7 +780,7 @@ mod tests {
         [clients.acme-corp]
         id = 100001
 
-        [clients.acme-corp.projects.automations]
+        [clients.acme-corp.projects.website]
         id = 200001
     "#;
 
@@ -799,17 +797,11 @@ mod tests {
     fn harvest_ids_come_from_harvest_toml_both_ways() {
         let c = Config::parse_with_harvest(SAMPLE, HARVEST).unwrap();
         assert_eq!(c.harvest_client_id("acme-corp"), Some(100001));
-        assert_eq!(
-            c.harvest_project_id("acme-corp", "automations"),
-            Some(200001)
-        );
+        assert_eq!(c.harvest_project_id("acme-corp", "website"), Some(200001));
         assert_eq!(c.harvest_task_id("programming"), Some(300017));
         assert_eq!(c.harvest_task_id("pm"), None, "a jimtime-only task");
         assert_eq!(c.client_for_harvest(100001), Some("acme-corp"));
-        assert_eq!(
-            c.project_for_harvest("acme-corp", 200001),
-            Some("automations")
-        );
+        assert_eq!(c.project_for_harvest("acme-corp", 200001), Some("website"));
         assert_eq!(c.task_for_harvest(300016), Some("design"));
     }
 
@@ -891,13 +883,10 @@ mod tests {
                 .to_string();
             assert!(err.contains(key) && err.contains("config migrate"), "{err}");
         }
-        let text = SAMPLE.replace(
-            "name = \"Automations\"",
-            "name = \"Automations\"\nharvest_id = 9",
-        );
+        let text = SAMPLE.replace("name = \"Website\"", "name = \"Website\"\nharvest_id = 9");
         let err = Config::parse(&text).err().unwrap().to_string();
         assert!(
-            err.contains("clients.acme-corp.projects.automations.harvest_id"),
+            err.contains("clients.acme-corp.projects.website.harvest_id"),
             "{err}"
         );
     }
