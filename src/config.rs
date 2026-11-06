@@ -75,6 +75,12 @@ pub struct InvoiceSettings {
     pub chrome: Option<String>,
     /// Free text printed on every invoice (e.g. "Thank you!").
     pub notes: Option<String>,
+    /// The PDF's name as the client sees it: the email attachment and the
+    /// cloud copies. `{number}`, `{year}`, `{client}` (the client key) and
+    /// `{issue_date}` placeholders. The copy in the data repo is always
+    /// `invoices/YYYY/<number>.pdf`.
+    #[serde(default = "default_file_name")]
+    pub file_name: String,
 }
 
 impl Default for InvoiceSettings {
@@ -86,8 +92,54 @@ impl Default for InvoiceSettings {
             due_days: default_due_days(),
             chrome: None,
             notes: None,
+            file_name: default_file_name(),
         }
     }
+}
+
+fn default_file_name() -> String {
+    "Invoice {number}.pdf".into()
+}
+
+/// Expand `invoice.file_name` for one invoice. The result is a file name a
+/// client's mail program and Dropbox/Drive will accept: no path separators,
+/// no control characters, ending in `.pdf`.
+pub fn invoice_file_name(
+    fmt: &str,
+    number: &str,
+    year: i32,
+    client: &str,
+    issue_date: &str,
+) -> Result<String> {
+    let mut out = String::new();
+    let mut rest = fmt;
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        let end = rest[start..]
+            .find('}')
+            .with_context(|| format!("unclosed {{ in invoice.file_name {fmt:?}"))?
+            + start;
+        match &rest[start + 1..end] {
+            "number" => out.push_str(number),
+            "year" => out.push_str(&year.to_string()),
+            "client" => out.push_str(client),
+            "issue_date" => out.push_str(issue_date),
+            t => bail!(
+                "unknown placeholder {{{t}}} in invoice.file_name {fmt:?}; \
+                 use {{number}}, {{year}}, {{client}} or {{issue_date}}"
+            ),
+        }
+        rest = &rest[end + 1..];
+    }
+    out.push_str(rest);
+    let out = out.trim().to_string();
+    if out.contains(['/', '\\']) || out.chars().any(char::is_control) {
+        bail!("invoice.file_name {fmt:?} gives {out:?}, which is not a plain file name");
+    }
+    if !out.to_lowercase().ends_with(".pdf") || out.len() <= 4 {
+        bail!("invoice.file_name {fmt:?} must end in .pdf");
+    }
+    Ok(out)
 }
 
 fn default_number_format() -> String {
@@ -420,6 +472,8 @@ impl Config {
     /// Cross-reference checks the TOML shape cannot express, so a typo fails at
     /// load instead of mid-invoice.
     fn validate(&self) -> Result<()> {
+        // A bad file name should fail here, not when an invoice is being sent.
+        invoice_file_name(&self.invoice.file_name, "001", 2026, "client", "2026-01-31")?;
         for (ck, c) in &self.clients {
             for (pk, p) in &c.projects {
                 if !self.tasks.contains_key(&p.default_task) {
@@ -790,6 +844,36 @@ mod tests {
         assert!(Config::parse_with_harvest(SAMPLE, "[clients.nope]\nid = 1\n").is_err());
         let bad = "[clients.acme-corp]\nid = 1\n[clients.acme-corp.projects.nope]\nid = 2\n";
         assert!(Config::parse_with_harvest(SAMPLE, bad).is_err());
+    }
+
+    #[test]
+    fn invoice_file_names() {
+        let name = |fmt: &str| invoice_file_name(fmt, "037", 2026, "acme-corp", "2026-10-28");
+        assert_eq!(name("Invoice {number}.pdf").unwrap(), "Invoice 037.pdf");
+        assert_eq!(
+            name("jimnist_invoice_{number}.pdf").unwrap(),
+            "jimnist_invoice_037.pdf"
+        );
+        assert_eq!(
+            name("{client}-{year}-{number} ({issue_date}).pdf").unwrap(),
+            "acme-corp-2026-037 (2026-10-28).pdf"
+        );
+        assert!(name("{nmber}.pdf").is_err(), "typo'd placeholder");
+        assert!(name("invoices/{number}.pdf").is_err(), "a path, not a name");
+        assert!(name("invoice_{number}").is_err(), "must end in .pdf");
+        assert!(name(".pdf").is_err());
+    }
+
+    #[test]
+    fn a_bad_file_name_fails_at_load() {
+        let text = format!("{SAMPLE}\n[invoice]\nfile_name = \"{{nope}}.pdf\"\n");
+        let err = Config::parse(&text).err().unwrap().to_string();
+        assert!(err.contains("file_name"), "{err}");
+        let ok = format!("{SAMPLE}\n[invoice]\nfile_name = \"jimnist_invoice_{{number}}.pdf\"\n");
+        assert_eq!(
+            Config::parse(&ok).unwrap().invoice.file_name,
+            "jimnist_invoice_{number}.pdf"
+        );
     }
 
     #[test]

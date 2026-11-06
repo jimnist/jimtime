@@ -318,6 +318,8 @@ Imported records keep Harvest's own line items, discounts and amount, since what
 It needs the `HARVEST_*` credentials and the Harvest ids in harvest.toml (which `config migrate` writes), and it can be re-run to pick up changes, such as an invoice getting paid.
 
 Numbers default to `{year}-{seq:03}` (`2026-004`), restarting each year; set `invoice.number_format` and `invoice.start_seq` to continue an existing sequence.
+The PDF goes out (email attachment, cloud copies) as `Invoice 037.pdf` by default; set `invoice.file_name` to name it your way, e.g. `"jimnist_invoice_{number}.pdf"` (placeholders `{number}`, `{year}`, `{client}`, `{issue_date}`).
+The copy in the data repo is always `invoices/YYYY/<number>.pdf`, which is what `invoice open` and `invoice send` use, so leave those names alone.
 Finalizing requires a successful pull when the data repo has a remote, so the next number is always the real next number.
 
 Coming from Harvest invoicing, carry its numbers on instead:

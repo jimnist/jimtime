@@ -98,6 +98,17 @@ fn check() -> Result<()> {
     println!("Tasks:     {}", c.tasks.keys().cloned().collect::<Vec<_>>().join(", "));
     println!("Repos:     {}", c.repos.len());
     println!(
+        "Invoices:  numbered {}, sent as {:?}",
+        c.invoice.number_format,
+        crate::config::invoice_file_name(
+            &c.invoice.file_name,
+            &crate::invoice::format_number(&c.invoice.number_format, 2026, 1)?,
+            2026,
+            c.clients.keys().next().map(String::as_str).unwrap_or("client"),
+            "2026-01-31",
+        )?
+    );
+    println!(
         "Data sync: {}",
         if c.git.auto_sync {
             "on when the data home is its own repo"
@@ -562,6 +573,7 @@ name = ""
 # number_format = "{year}-{seq:03}"
 # start_seq = 1
 # due_days = 30
+# file_name = "Invoice {number}.pdf"  # attachment name; also {year}, {client}, {issue_date}
 # template = "templates/invoice.html"   # relative to this config dir
 # To carry on Harvest's invoice numbers (e.g. 041 -> 042), match its format
 # here and set numbering = true in harvest.toml:
@@ -604,6 +616,7 @@ name = "Your Name"
 # number_format = "{year}-{seq:03}"
 # start_seq = 1
 # due_days = 30
+# file_name = "Invoice {number}.pdf"  # attachment name; also {year}, {client}, {issue_date}
 # template = "templates/invoice.html"   # relative to this config dir
 
 # [email]
