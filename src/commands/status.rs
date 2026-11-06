@@ -18,20 +18,20 @@ impl Command for Status {
         let m = config.for_repo(&repo)?;
         let date = timeutil::today()?;
 
-        println!("Current repo:     {}", repo.display());
-        println!("Mapped client:    {}", m.client.name);
-        println!("Mapped project:   {}", m.project.name);
-        println!(
+        outln!("Current repo:     {}", repo.display());
+        outln!("Mapped client:    {}", m.client.name);
+        outln!("Mapped project:   {}", m.project.name);
+        outln!(
             "Default task:     {}",
             config.task(&m.project.default_task)?.name
         );
-        println!(
+        outln!(
             "Billable default: {}",
             if m.project.billable { "yes" } else { "no" }
         );
-        println!("Billing timezone: {}", timeutil::billing_tz()?);
-        println!("Today's store:    {}", paths::day_file(&date)?.display());
-        println!(
+        outln!("Billing timezone: {}", timeutil::billing_tz()?);
+        outln!("Today's store:    {}", paths::day_file(&date)?.display());
+        outln!(
             "Harvest:          {}",
             if config.harvest.enabled {
                 "enabled"
@@ -39,7 +39,7 @@ impl Command for Status {
                 "disabled"
             }
         );
-        println!("Data repo:        {}", super::data::describe_state()?);
+        outln!("Data repo:        {}", super::data::describe_state()?);
         Ok(())
     }
 }

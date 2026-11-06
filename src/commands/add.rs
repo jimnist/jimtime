@@ -103,7 +103,7 @@ impl Command for Add {
             proto.label()
         ))?;
 
-        println!(
+        outln!(
             "Added {}h to {} on {}{}",
             fmt_hours(hours),
             proto.label(),
@@ -114,7 +114,7 @@ impl Command for Add {
                 ""
             }
         );
-        println!("  {}  ({})", self.notes, id);
+        outln!("  {}  ({})", self.notes, id);
         Ok(())
     }
 }
