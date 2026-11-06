@@ -98,7 +98,7 @@ fn check() -> Result<()> {
     println!("Tasks:     {}", c.tasks.keys().cloned().collect::<Vec<_>>().join(", "));
     println!("Repos:     {}", c.repos.len());
     println!(
-        "Invoices:  numbered {}, sent as {:?}",
+        "Invoices:  numbered {}, PDF sent as e.g. {:?}",
         c.invoice.number_format,
         crate::config::invoice_file_name(
             &c.invoice.file_name,
