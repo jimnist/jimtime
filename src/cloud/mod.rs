@@ -143,7 +143,7 @@ pub async fn upload_all(
         }
         match p.upload(config, pdf, &inv.pdf_name()).await {
             Ok(u) => {
-                println!("Uploaded to {}: {}", p.name(), u.location);
+                outln!("Uploaded to {}: {}", p.name(), u.location);
                 inv.uploads.push(u);
             }
             Err(e) => failures.push((p, e)),

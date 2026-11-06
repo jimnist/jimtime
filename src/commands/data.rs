@@ -91,7 +91,7 @@ fn init(remote: Option<&str>) -> Result<()> {
             let sync = Sync::begin("data init", false)?;
             datarepo::ensure_setup(&root)?;
             sync.commit("data: set up jimtime sync")?;
-            println!("{} is already a git repo; sync is set up.", root.display());
+            outln!("{} is already a git repo; sync is set up.", root.display());
         }
         RepoState::NotARepo => {
             let empty = !home.exists()
@@ -109,7 +109,7 @@ fn init(remote: Option<&str>) -> Result<()> {
                 let sync = Sync::begin("data init", false)?;
                 datarepo::ensure_setup(&root)?;
                 sync.commit("data: set up jimtime sync")?;
-                println!("Cloned {url} into {}.", home.display());
+                outln!("Cloned {url} into {}.", home.display());
             } else {
                 std::fs::create_dir_all(&home)?;
                 let root = std::fs::canonicalize(&home)?;
@@ -120,11 +120,11 @@ fn init(remote: Option<&str>) -> Result<()> {
                 if let Some(url) = remote {
                     add_remote_and_push(&root, url)?;
                 }
-                println!("Made {} a git repo.", home.display());
+                outln!("Made {} a git repo.", home.display());
             }
         }
     }
-    println!("{}", describe_state()?);
+    outln!("{}", describe_state()?);
     Ok(())
 }
 
@@ -155,12 +155,12 @@ fn subtree_hint(toplevel: &Path, home: &Path) -> String {
 
 fn status() -> Result<()> {
     let home = paths::home()?;
-    println!("Data home: {}", home.display());
-    println!("Sync:      {}", describe_state()?);
+    outln!("Data home: {}", home.display());
+    outln!("Sync:      {}", describe_state()?);
     let root = match datarepo::state()? {
         RepoState::Active { root } | RepoState::Disabled { root } => root,
         RepoState::Nested { toplevel } => {
-            println!(
+            outln!(
                 "\nTo give the data its own repo while keeping its history:\n  {}",
                 subtree_hint(&toplevel, &home)
             );
@@ -169,12 +169,12 @@ fn status() -> Result<()> {
         RepoState::NotARepo => return Ok(()),
     };
     if let Ok(url) = git_ok(&root, &["remote", "get-url", "origin"]) {
-        println!("Remote:    {url}");
+        outln!("Remote:    {url}");
     }
     if datarepo::has_upstream(&root) {
         let fetched = git(&root, &["fetch", "--quiet"])?.status.success();
         if let Some((ahead, behind)) = datarepo::ahead_behind(&root) {
-            println!(
+            outln!(
                 "Upstream:  {ahead} to push, {behind} to pull{}",
                 if fetched { "" } else { " (could not fetch; as of the last fetch)" }
             );
@@ -182,7 +182,7 @@ fn status() -> Result<()> {
     }
     let dirty = git_ok(&root, &["status", "--porcelain"])?;
     if !dirty.is_empty() {
-        println!("Uncommitted hand edits (`jimtime data sync` commits them):\n{dirty}");
+        outln!("Uncommitted hand edits (`jimtime data sync` commits them):\n{dirty}");
     }
     Ok(())
 }
@@ -199,10 +199,10 @@ fn sync_now() -> Result<()> {
         check_hand_edits(&root)?;
         git_ok(&root, &["add", "-A"])?;
         git_ok(&root, &["commit", "--quiet", "-m", "data: hand edits"])?;
-        println!("Committed hand edits:\n{dirty}");
+        outln!("Committed hand edits:\n{dirty}");
     }
     if !datarepo::has_upstream(&root) {
-        println!("Committed locally; the data repo has no remote (`jimtime data init --remote <url>`).");
+        outln!("Committed locally; the data repo has no remote (`jimtime data init --remote <url>`).");
         return Ok(());
     }
     let sync = Sync::begin("data sync", true)?;
@@ -211,7 +211,7 @@ fn sync_now() -> Result<()> {
     if !out.status.success() {
         bail!("push failed:\n{}", String::from_utf8_lossy(&out.stderr).trim());
     }
-    println!("Data repo is in sync.");
+    outln!("Data repo is in sync.");
     Ok(())
 }
 

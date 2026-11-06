@@ -42,7 +42,7 @@ impl Command for Config {
             ConfigCmd::Migrate { force } => migrate(*force),
             ConfigCmd::Check => check(),
             ConfigCmd::Path => {
-                println!("{}", paths::config_file()?.display());
+                outln!("{}", paths::config_file()?.display());
                 Ok(())
             }
         }
@@ -57,15 +57,15 @@ fn init() -> Result<()> {
     let sync = Sync::begin("config init", false)?;
     write_config(STARTER, None)?;
     sync.commit("config: starter jimtime.toml")?;
-    println!("Wrote {}", path.display());
-    println!("Fill in [business], a client and a [[repos]] mapping, then run `jimtime config check`.");
+    outln!("Wrote {}", path.display());
+    outln!("Fill in [business], a client and a [[repos]] mapping, then run `jimtime config check`.");
     Ok(())
 }
 
 fn check() -> Result<()> {
     let c = Settings::load()?;
-    println!("{} is valid.\n", paths::config_file()?.display());
-    println!(
+    outln!("{} is valid.\n", paths::config_file()?.display());
+    outln!(
         "Business:  {}",
         if c.business.name.is_empty() {
             "(name not set)"
@@ -74,7 +74,7 @@ fn check() -> Result<()> {
         }
     );
     for (ck, client) in &c.clients {
-        println!(
+        outln!(
             "Client:    {} ({ck}), {}, invoices to: {}",
             client.name,
             client.currency,
@@ -85,19 +85,19 @@ fn check() -> Result<()> {
             }
         );
         if !client.email_cc.is_empty() {
-            println!("           cc: {}", client.email_cc.join(", "));
+            outln!("           cc: {}", client.email_cc.join(", "));
         }
         for (pk, p) in &client.projects {
             let rate = p
                 .rate
                 .map(|r| format!("{r}/h"))
                 .unwrap_or_else(|| "no rate".into());
-            println!("  Project: {} ({pk}), {rate}, default task {}", p.name, p.default_task);
+            outln!("  Project: {} ({pk}), {rate}, default task {}", p.name, p.default_task);
         }
     }
-    println!("Tasks:     {}", c.tasks.keys().cloned().collect::<Vec<_>>().join(", "));
-    println!("Repos:     {}", c.repos.len());
-    println!(
+    outln!("Tasks:     {}", c.tasks.keys().cloned().collect::<Vec<_>>().join(", "));
+    outln!("Repos:     {}", c.repos.len());
+    outln!(
         "Data sync: {}",
         if c.git.auto_sync {
             "on when the data home is its own repo"
@@ -106,14 +106,14 @@ fn check() -> Result<()> {
         }
     );
     let h = &c.harvest;
-    println!(
+    outln!(
         "Harvest:   {}{}; ids for {} client(s), {} task(s)",
         if h.enabled { "pushing on" } else { "pushing off" },
         if h.numbering { ", numbering continues Harvest's" } else { "" },
         h.clients.len(),
         h.tasks.len()
     );
-    println!(
+    outln!(
         "Email:     {}",
         c.email
             .as_ref()
@@ -122,10 +122,10 @@ fn check() -> Result<()> {
     );
     if let Some(e) = &c.email {
         if !e.cc.is_empty() {
-            println!("           cc on every invoice: {}", e.cc.join(", "));
+            outln!("           cc on every invoice: {}", e.cc.join(", "));
         }
         if !e.bcc.is_empty() {
-            println!("           bcc on every invoice: {}", e.bcc.join(", "));
+            outln!("           bcc on every invoice: {}", e.bcc.join(", "));
         }
     }
     let mut cloud = Vec::new();
@@ -135,7 +135,7 @@ fn check() -> Result<()> {
     if c.cloud.google_drive.is_some() {
         cloud.push("google-drive");
     }
-    println!(
+    outln!(
         "Cloud:     {}",
         if cloud.is_empty() {
             "none".to_string()
@@ -246,10 +246,10 @@ fn migrate(force: bool) -> Result<()> {
     datarepo::note_write(&legacy_path);
     sync.commit("config: migrate harvest-projects.json to jimtime.toml + harvest.toml")?;
 
-    println!("Wrote {} and {}", path.display(), hpath.display());
-    println!("Rewrote {rewritten} day file(s) with client/project/task keys.");
-    println!("Removed {} (its content is now in those two).", legacy_path.display());
-    println!(
+    outln!("Wrote {} and {}", path.display(), hpath.display());
+    outln!("Rewrote {rewritten} day file(s) with client/project/task keys.");
+    outln!("Removed {} (its content is now in those two).", legacy_path.display());
+    outln!(
         "\nHarvest pushing is off by default. To keep pushing, set `enabled = true` in harvest.toml.\n\
          To invoice, fill in [business] and each project's `rate`, then `jimtime config check`."
     );
@@ -273,8 +273,8 @@ fn split_existing(text: &str, force: bool) -> Result<()> {
     let sync = Sync::begin("config migrate", false)?;
     write_config(&main, Some(&render_harvest(&harvest)))?;
     sync.commit("config: move Harvest settings to harvest.toml")?;
-    println!("Moved the Harvest settings out of {} into {}.", path.display(), hpath.display());
-    println!(
+    outln!("Moved the Harvest settings out of {} into {}.", path.display(), hpath.display());
+    outln!(
         "  pushing {}, numbering {}, ids for {} client(s) and {} task(s)",
         if harvest.enabled { "on" } else { "off" },
         if harvest.numbering { "on" } else { "off" },
