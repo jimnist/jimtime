@@ -339,9 +339,15 @@ impl Invoice {
         Ok(year_dir(self.year)?.join(format!("{}.pdf", self.number)))
     }
 
-    /// The PDF's file name when attached or uploaded.
-    pub fn pdf_name(&self) -> String {
-        format!("Invoice {}.pdf", self.number)
+    /// The PDF's file name when attached or uploaded (`invoice.file_name`).
+    pub fn pdf_name(&self, config: &Config) -> Result<String> {
+        crate::config::invoice_file_name(
+            &config.invoice.file_name,
+            &self.number,
+            self.year,
+            &self.client_key,
+            &self.issue_date,
+        )
     }
 
     /// Write the record and note it for the data repo.

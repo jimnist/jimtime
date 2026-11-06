@@ -137,11 +137,23 @@ pub async fn upload_all(
     pdf: &Path,
 ) -> Vec<(Provider, anyhow::Error)> {
     let mut failures = Vec::new();
+    // The config validated the name format at load, so this only fails on a
+    // number or client key that cannot be a file name.
+    let name = match inv.pdf_name(config) {
+        Ok(n) => n,
+        Err(e) => {
+            return Provider::ALL
+                .into_iter()
+                .filter(|p| p.is_configured(config))
+                .map(|p| (p, anyhow::anyhow!("{e:#}")))
+                .collect();
+        }
+    };
     for p in Provider::ALL {
         if !p.is_configured(config) {
             continue;
         }
-        match p.upload(config, pdf, &inv.pdf_name()).await {
+        match p.upload(config, pdf, &name).await {
             Ok(u) => {
                 outln!("Uploaded to {}: {}", p.name(), u.location);
                 inv.uploads.push(u);
