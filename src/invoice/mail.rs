@@ -90,7 +90,7 @@ impl<'a> Mailer<'a> {
             MultiPart::mixed()
                 .singlepart(SinglePart::plain(render::text(&s.body, inv)?))
                 .singlepart(
-                    Attachment::new(inv.pdf_name())
+                    Attachment::new(inv.pdf_name(config)?)
                         .body(bytes, ContentType::parse("application/pdf")?),
                 ),
         )?;

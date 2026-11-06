@@ -32,6 +32,7 @@ An invoice is a promise to a client, so it gets the same treatment as a Harvest 
 - **`invoice void <number>`** marks the record void and unlocks its entries.
   The number stays used.
   `unapprove` refuses invoiced entries, mirroring how it refuses pushed ones.
+- **File names**: the stored PDF is always `invoices/YYYY/<number>.pdf`; what the client sees (attachment, cloud copy) is `invoice.file_name`, default `Invoice {number}.pdf`, checked when the config loads.
 - **Recipients** are the client's `email_to` (To), its `email_cc` plus `[email] cc` (Cc), and `[email] bcc` (Bcc), each address once, in its most visible field.
   A one-off `--cc` on `draft`/`finalize` joins the invoice's snapshot, so it is in the fingerprint and on the record; `send --to/--cc` add recipients to that one email only, and each send records who got it.
 - The SMTP password comes only from `$JIMTIME_SMTP_PASSWORD` (ADR-0003); host, port, username and addresses are non-secret config.
