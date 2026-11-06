@@ -2,7 +2,7 @@
 
 Before jimtime invoiced, Harvest did, and it is the only place that knows which time was billed on which invoice, what each invoice came to, and whether it was paid.
 Once Harvest is turned off, that is gone.
-Worse, until jimtime knows it, time Harvest already billed looks invoiceable here: on the day this was written, 23 of 27 local entries were already on Harvest invoices.
+Worse, until jimtime knows it, time Harvest already billed looks invoiceable here, which invites billing the same hours twice.
 
 ## Decision
 
@@ -13,7 +13,7 @@ Worse, until jimtime knows it, time Harvest already billed looks invoiceable her
   3. Each issued Harvest invoice becomes a record (`invoices/YYYY/<number>.json`, `source: harvest`) with its PDF, downloaded from the client-facing link Harvest emails out (the API has no PDF endpoint).
   Drafts are skipped; a `closed` invoice stops the import until it is handled deliberately.
 - **Harvest's money is authoritative for Harvest's invoices.**
-  Harvest line items can be edited and discounted (invoice 034 had a 25% discount and a line billed below the tracked hours), so a record keeps Harvest's line items, discount, taxes and amount (`harvest`, `total`) as what the client was billed.
+  Harvest line items can be edited and discounted (a percentage discount, or a line billed below the tracked hours, are both common), so a record keeps Harvest's line items, discount, taxes and amount (`harvest`, `total`) as what the client was billed.
   Its `lines` record the time each invoice covered, at each entry's rate, and may not add up to `total`.
 - **Everything is checked before anything is written**: every Harvest client, project and task maps to a config key by its `id` in harvest.toml, every number fits `number_format`, and no invoice number or entry is claimed by both sides differently.
   Any failure names what to fix and imports nothing.

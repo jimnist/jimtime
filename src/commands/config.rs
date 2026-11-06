@@ -406,7 +406,7 @@ fn split_harvest(text: &str) -> Result<(String, HarvestOut)> {
     // The suggestion comments this tool wrote under [invoice] are now stale.
     let edited = edited
         .replace(
-            "# To carry on Harvest's invoice numbers (e.g. 036 -> 037), match its format\n\
+            "# To carry on Harvest's invoice numbers (e.g. 041 -> 042), match its format\n\
              # and let finalize read the numbers Harvest has used:\n",
             "",
         )
@@ -575,7 +575,7 @@ name = ""
 # due_days = 30
 # file_name = "Invoice {number}.pdf"  # attachment name; also {year}, {client}, {issue_date}
 # template = "templates/invoice.html"   # relative to this config dir
-# To carry on Harvest's invoice numbers (e.g. 036 -> 037), match its format
+# To carry on Harvest's invoice numbers (e.g. 041 -> 042), match its format
 # here and set numbering = true in harvest.toml:
 # number_format = "{seq:03}"
 
@@ -678,8 +678,8 @@ mod tests {
         let legacy: Legacy = serde_json::from_str(
             r#"{
               "repos": [{
-                "repo_path": "/code/mm", "client_id": 1, "client_name": "Magic Mind",
-                "project_id": 2, "project_name": "Automations",
+                "repo_path": "/code/mm", "client_id": 1, "client_name": "Acme Corp",
+                "project_id": 2, "project_name": "Website",
                 "default_task_id": 3, "default_task_name": "Programming", "billable": true
               }],
               "aliases": {
@@ -694,11 +694,11 @@ mod tests {
         let c = Settings::from_texts(&text, Some(&render_harvest(&harvest))).unwrap();
         assert!(!c.harvest.enabled);
         assert_eq!(c.harvest_task_id("pm"), Some(4));
-        let p = &c.clients["magic-mind"].projects["automations"];
+        let p = &c.clients["acme-corp"].projects["website"];
         assert_eq!(p.default_task, "programming");
-        assert_eq!(c.harvest_project_id("magic-mind", "automations"), Some(2));
-        assert_eq!(c.harvest_client_id("magic-mind"), Some(1));
-        assert_eq!(c.repos[0].client, "magic-mind");
+        assert_eq!(c.harvest_project_id("acme-corp", "website"), Some(2));
+        assert_eq!(c.harvest_client_id("acme-corp"), Some(1));
+        assert_eq!(c.repos[0].client, "acme-corp");
         assert_eq!(keys.tasks[&4], "pm", "alias key, not slug of the name");
     }
 
@@ -713,7 +713,7 @@ name = ""
 number_format = "{seq:03}"
 harvest_numbering = true
 # template = "templates/invoice.html"   # relative to this config dir
-# To carry on Harvest's invoice numbers (e.g. 036 -> 037), match its format
+# To carry on Harvest's invoice numbers (e.g. 041 -> 042), match its format
 # and let finalize read the numbers Harvest has used:
 # harvest_numbering = true
 
@@ -729,25 +729,25 @@ enabled = false
 
 [tasks.pm]
 name = "Project Management"
-harvest_id = 26185919
+harvest_id = 300019
 
 [tasks.programming]
 name = "Programming"
-harvest_id = 26185917
+harvest_id = 300017
 
 # --- Clients and projects ---
 
-[clients.magic-mind]
-name = "Magic Mind"
+[clients.acme-corp]
+name = "Acme Corp"
 currency = "USD"
 email_to = ["payables@example.com"]   # hand edit
-harvest_id = 17474327
+harvest_id = 100001
 
-[clients.magic-mind.projects.automations]
-name = "Automations"
+[clients.acme-corp.projects.website]
+name = "Website"
 default_task = "programming"
 billable = true
-harvest_id = 47491699
+harvest_id = 200001
 "#;
 
     #[test]
@@ -759,13 +759,13 @@ harvest_id = 47491699
                 enabled: false,
                 numbering: true,
                 tasks: vec![
-                    ("pm".into(), 26185919, "Project Management".into()),
-                    ("programming".into(), 26185917, "Programming".into()),
+                    ("pm".into(), 300019, "Project Management".into()),
+                    ("programming".into(), 300017, "Programming".into()),
                 ],
                 clients: vec![(
-                    "magic-mind".into(),
-                    17474327,
-                    vec![("automations".into(), 47491699)]
+                    "acme-corp".into(),
+                    100001,
+                    vec![("website".into(), 200001)]
                 )],
             }
         );
@@ -784,8 +784,8 @@ harvest_id = 47491699
 
         let c = Settings::from_texts(&main, Some(&render_harvest(&h))).unwrap();
         assert!(c.harvest.numbering && !c.harvest.enabled);
-        assert_eq!(c.harvest_task_id("programming"), Some(26185917));
-        assert_eq!(c.harvest_project_id("magic-mind", "automations"), Some(47491699));
+        assert_eq!(c.harvest_task_id("programming"), Some(300017));
+        assert_eq!(c.harvest_project_id("acme-corp", "website"), Some(200001));
 
         // Splitting again finds nothing left to move.
         let (again, h2) = split_harvest(&main).unwrap();

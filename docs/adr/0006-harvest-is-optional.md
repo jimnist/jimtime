@@ -7,7 +7,7 @@ jimtime now invoices on its own (ADR-0007), so Harvest becomes one optional dest
 
 ## Decision
 
-- Clients, projects and tasks are defined in `$JIMTIME_HOME/config/jimtime.toml`, keyed by short slugs chosen by the user (`magic-mind`, `automations`, `programming`).
+- Clients, projects and tasks are defined in `$JIMTIME_HOME/config/jimtime.toml`, keyed by short slugs chosen by the user (`acme-corp`, `website`, `programming`).
   These **keys** are the identity, and the display names are just labels.
 - **Everything Harvest lives in its own file, `config/harvest.toml`**: whether pushing is on (`enabled`, false by default), whether numbering continues Harvest's (`numbering`), and the Harvest `id` of each client, project and task, keyed by their jimtime keys.
   jimtime.toml reads the same whether or not Harvest is used, and an absent harvest.toml simply means no Harvest.

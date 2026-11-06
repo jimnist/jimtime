@@ -297,10 +297,10 @@ jimtime invoice void 2026-004        # unlock its entries; the number stays used
 ```
 $ jimtime invoice list
 NUMBER       ISSUED      CLIENT                            TOTAL  STATUS
-035          2026-08-16  Magic Mind                 2,062.50 USD  paid 2026-09-17 (from Harvest)
-036          2026-09-17  Magic Mind                 3,150.00 USD  open, due 2026-10-17 (from Harvest)
+041          2026-05-04  Acme Corp                  1,812.50 USD  paid 2026-05-21 (from Harvest)
+042          2026-06-02  Acme Corp                  2,475.00 USD  open, due 2026-07-02 (from Harvest)
 
-Outstanding: 3,150.00 USD
+Outstanding: 2,475.00 USD
 ```
 
 #### Bringing your Harvest history over
@@ -327,7 +327,7 @@ Coming from Harvest invoicing, carry its numbers on instead:
 ```toml
 # jimtime.toml
 [invoice]
-number_format = "{seq:03}"   # match Harvest's: 036 -> 037
+number_format = "{seq:03}"   # match Harvest's: 041 -> 042
 
 # harvest.toml
 numbering = true

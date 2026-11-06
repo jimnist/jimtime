@@ -20,7 +20,7 @@ The design was sharpened in grilling sessions (interviewing the spec against the
   "date": "2026-07-28",
   "sections": [
     {
-      "repo_path": "/Users/jimnist/code/client/acme",
+      "repo_path": "/Users/you/code/client/acme",
       "client": "acme", "client_name": "Acme",
       "project": "billing-portal", "project_name": "Billing Portal",
       "task": "development", "task_name": "Development",

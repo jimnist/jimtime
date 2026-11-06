@@ -697,20 +697,20 @@ mod tests {
         [tasks.pm]
         name = "Project Management"
 
-        [clients.magic-mind]
-        name = "Magic Mind"
+        [clients.acme-corp]
+        name = "Acme Corp"
         email_to = ["ap@example.com"]
 
-        [clients.magic-mind.projects.automations]
-        name = "Automations"
+        [clients.acme-corp.projects.website]
+        name = "Website"
         rate = 150.0
         task_rates = { pm = 100.0 }
         default_task = "programming"
 
         [[repos]]
         path = "/tmp/mm"
-        client = "magic-mind"
-        project = "automations"
+        client = "acme-corp"
+        project = "website"
     "#;
 
     #[test]
@@ -719,27 +719,25 @@ mod tests {
         assert!(!c.harvest.enabled, "Harvest is off by default");
         assert!(c.git.auto_sync);
         assert_eq!(c.invoice.number_format, "{year}-{seq:03}");
-        assert_eq!(c.clients["magic-mind"].currency, "USD");
-        assert!(c.clients["magic-mind"].projects["automations"].billable);
+        assert_eq!(c.clients["acme-corp"].currency, "USD");
+        assert!(c.clients["acme-corp"].projects["website"].billable);
     }
 
     #[test]
     fn task_rate_overrides_project_rate() {
         let c = Config::parse(SAMPLE).unwrap();
         assert_eq!(
-            c.rate("magic-mind", "automations", "programming").unwrap(),
+            c.rate("acme-corp", "website", "programming").unwrap(),
             150.0
         );
-        assert_eq!(c.rate("magic-mind", "automations", "pm").unwrap(), 100.0);
+        assert_eq!(c.rate("acme-corp", "website", "pm").unwrap(), 100.0);
     }
 
     #[test]
     fn missing_rate_is_an_error_naming_the_setting() {
         let text = SAMPLE.replace("rate = 150.0\n", "");
         let c = Config::parse(&text).unwrap();
-        let err = c
-            .rate("magic-mind", "automations", "programming")
-            .unwrap_err();
+        let err = c.rate("acme-corp", "website", "programming").unwrap_err();
         assert!(err.to_string().contains("set `rate`"), "{err}");
     }
 
@@ -751,7 +749,7 @@ mod tests {
 
     #[test]
     fn repo_mapping_to_unknown_project_fails_validation() {
-        let text = SAMPLE.replace("project = \"automations\"", "project = \"nope\"");
+        let text = SAMPLE.replace("project = \"website\"", "project = \"nope\"");
         assert!(Config::parse(&text).is_err());
     }
 
@@ -773,17 +771,17 @@ mod tests {
         numbering = true
 
         [tasks.programming]
-        id = 26185917
+        id = 300017
 
         [tasks.design]
-        id = 26185916
+        id = 300016
         name = "Design"
 
-        [clients.magic-mind]
-        id = 17474327
+        [clients.acme-corp]
+        id = 100001
 
-        [clients.magic-mind.projects.automations]
-        id = 47491699
+        [clients.acme-corp.projects.website]
+        id = 200001
     "#;
 
     #[test]
@@ -798,19 +796,13 @@ mod tests {
     #[test]
     fn harvest_ids_come_from_harvest_toml_both_ways() {
         let c = Config::parse_with_harvest(SAMPLE, HARVEST).unwrap();
-        assert_eq!(c.harvest_client_id("magic-mind"), Some(17474327));
-        assert_eq!(
-            c.harvest_project_id("magic-mind", "automations"),
-            Some(47491699)
-        );
-        assert_eq!(c.harvest_task_id("programming"), Some(26185917));
+        assert_eq!(c.harvest_client_id("acme-corp"), Some(100001));
+        assert_eq!(c.harvest_project_id("acme-corp", "website"), Some(200001));
+        assert_eq!(c.harvest_task_id("programming"), Some(300017));
         assert_eq!(c.harvest_task_id("pm"), None, "a jimtime-only task");
-        assert_eq!(c.client_for_harvest(17474327), Some("magic-mind"));
-        assert_eq!(
-            c.project_for_harvest("magic-mind", 47491699),
-            Some("automations")
-        );
-        assert_eq!(c.task_for_harvest(26185916), Some("design"));
+        assert_eq!(c.client_for_harvest(100001), Some("acme-corp"));
+        assert_eq!(c.project_for_harvest("acme-corp", 200001), Some("website"));
+        assert_eq!(c.task_for_harvest(300016), Some("design"));
     }
 
     #[test]
@@ -842,13 +834,13 @@ mod tests {
     #[test]
     fn harvest_toml_cannot_name_clients_or_projects_jimtime_lacks() {
         assert!(Config::parse_with_harvest(SAMPLE, "[clients.nope]\nid = 1\n").is_err());
-        let bad = "[clients.magic-mind]\nid = 1\n[clients.magic-mind.projects.nope]\nid = 2\n";
+        let bad = "[clients.acme-corp]\nid = 1\n[clients.acme-corp.projects.nope]\nid = 2\n";
         assert!(Config::parse_with_harvest(SAMPLE, bad).is_err());
     }
 
     #[test]
     fn invoice_file_names() {
-        let name = |fmt: &str| invoice_file_name(fmt, "037", 2026, "magic-mind", "2026-10-28");
+        let name = |fmt: &str| invoice_file_name(fmt, "037", 2026, "acme-corp", "2026-10-28");
         assert_eq!(name("Invoice {number}.pdf").unwrap(), "Invoice 037.pdf");
         assert_eq!(
             name("jimnist_invoice_{number}.pdf").unwrap(),
@@ -856,7 +848,7 @@ mod tests {
         );
         assert_eq!(
             name("{client}-{year}-{number} ({issue_date}).pdf").unwrap(),
-            "magic-mind-2026-037 (2026-10-28).pdf"
+            "acme-corp-2026-037 (2026-10-28).pdf"
         );
         assert!(name("{nmber}.pdf").is_err(), "typo'd placeholder");
         assert!(name("invoices/{number}.pdf").is_err(), "a path, not a name");
@@ -891,13 +883,10 @@ mod tests {
                 .to_string();
             assert!(err.contains(key) && err.contains("config migrate"), "{err}");
         }
-        let text = SAMPLE.replace(
-            "name = \"Automations\"",
-            "name = \"Automations\"\nharvest_id = 9",
-        );
+        let text = SAMPLE.replace("name = \"Website\"", "name = \"Website\"\nharvest_id = 9");
         let err = Config::parse(&text).err().unwrap().to_string();
         assert!(
-            err.contains("clients.magic-mind.projects.automations.harvest_id"),
+            err.contains("clients.acme-corp.projects.website.harvest_id"),
             "{err}"
         );
     }

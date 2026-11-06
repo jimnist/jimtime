@@ -474,9 +474,9 @@ mod tests {
             [tasks.programming]
             name = "Programming"
             [clients.mm]
-            name = "Magic Mind"
+            name = "Acme Corp"
             [clients.mm.projects.auto]
-            name = "Automations"
+            name = "Website"
             default_task = "programming"
             rate = 150.0
             [[repos]]
@@ -510,11 +510,11 @@ mod tests {
             }),
             client: Named {
                 id: 10,
-                name: "Magic Mind".into(),
+                name: "Acme Corp".into(),
             },
             project: Named {
                 id: 20,
-                name: "Automations".into(),
+                name: "Website".into(),
             },
             task: Named {
                 id: 30,
@@ -527,10 +527,10 @@ mod tests {
     fn hinv(amount: f64) -> HarvestInvoice {
         HarvestInvoice {
             id: 99,
-            number: Some("034".into()),
+            number: Some("012".into()),
             client: Named {
                 id: 10,
-                name: "Magic Mind".into(),
+                name: "Acme Corp".into(),
             },
             client_key: "k".into(),
             amount,
@@ -576,24 +576,24 @@ mod tests {
     #[test]
     fn the_record_keeps_harvests_money_and_links_the_time() {
         let c = config();
-        let t = te(7, 2.83, Some((99, "034")));
+        let t = te(7, 2.5, Some((99, "012")));
         let r = record_for(
             &c,
-            "engine",
+            "Example Co",
             &hinv(337.5),
             &[(&t, "local-7".into())],
             None,
             None,
         )
         .unwrap();
-        assert_eq!((r.number.as_str(), r.seq, r.year), ("034", 34, 2026));
+        assert_eq!((r.number.as_str(), r.seq, r.year), ("012", 12, 2026));
         assert_eq!(r.source, Source::Harvest);
         assert_eq!(
             r.total, 337.5,
             "Harvest's amount, discount and edits included"
         );
         assert_eq!(r.lines[0].entry_id, "local-7");
-        assert_eq!(r.lines[0].hours, 2.83, "the time as tracked");
+        assert_eq!(r.lines[0].hours, 2.5, "the time as tracked");
         assert_eq!(r.paid_date.as_deref(), Some("2026-08-01"));
         let h = r.harvest.unwrap();
         assert_eq!(h.line_items[0].quantity, 2.25, "the line as billed");
@@ -605,7 +605,7 @@ mod tests {
     fn reimporting_an_unchanged_invoice_builds_the_same_record() {
         // What keeps a re-run from rewriting (and re-committing) anything.
         let c = config();
-        let t = te(7, 2.83, Some((99, "034")));
+        let t = te(7, 2.5, Some((99, "012")));
         let first = record_for(&c, "e", &hinv(337.5), &[(&t, "l7".into())], None, None).unwrap();
         let again = record_for(
             &c,
@@ -650,7 +650,7 @@ mod tests {
     fn backfilled_sections_use_config_names_keys_and_ids() {
         let s = section_for(&config(), &te(1, 1.0, None)).unwrap();
         assert_eq!(s.key(), ("/nonexistent/mm", "mm", "auto", "programming"));
-        assert_eq!(s.label(), "Magic Mind - Automations - Programming");
+        assert_eq!(s.label(), "Acme Corp - Website - Programming");
         assert_eq!(s.harvest_task_id, Some(30));
     }
 }
