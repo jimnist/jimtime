@@ -7,9 +7,9 @@
 jimtime tracks billable time by git repo and turns it into invoices.
 
 Run it from the repo you're working in and it already knows which client and project the time belongs to.
-Log time as you go, or let Claude Code log it at the end of a session with the `/jimtime` skill.
+Log time as you go, or let Claude Code log it at the end of a session with the [`/jimtime` skill](#the-claude-code-skill).
 When it's time to bill, review and approve the entries, render a PDF invoice from your own HTML template, and send it however you like: jimtime can email it, or you can.
-Your time and invoices live in plain JSON files in a private git repo you own.
+Your time and invoices live as plain files in a private git repo you own.
 [Harvest](https://www.getharvest.com/) is supported but optional.
 
 ```sh
@@ -23,8 +23,7 @@ $ jimtime invoice finalize --client acme --last-month
 
 ## Why
 
-Timers get forgotten and web forms get skipped.
-The repo you are working in already knows which client you are billing, so `jimtime` uses that as the key and keeps the friction down to one command at the end of a chunk of work.
+Timers get forgotten and web forms get skipped, so logging is one command at the end of a chunk of work.
 
 A few properties make it safe to point at a real invoice:
 
@@ -319,7 +318,7 @@ Imported records keep Harvest's own line items, discounts and amount, since what
 It needs the `HARVEST_*` credentials and the Harvest ids in harvest.toml (which `config migrate` writes), and it can be re-run to pick up changes, such as an invoice getting paid.
 
 Numbers default to `{year}-{seq:03}` (`2026-004`), restarting each year; set `invoice.number_format` and `invoice.start_seq` to continue an existing sequence.
-The PDF goes out (email attachment, cloud copies) as `Invoice 037.pdf` by default; set `invoice.file_name` to name it your way, e.g. `"jimnist_invoice_{number}.pdf"` (placeholders `{number}`, `{year}`, `{client}`, `{issue_date}`).
+The PDF goes out (email attachment, cloud copies) as `Invoice 2026-004.pdf` by default; set `invoice.file_name` to name it your way, e.g. `"yourname_invoice_{number}.pdf"` (placeholders `{number}`, `{year}`, `{client}`, `{issue_date}`).
 The copy in the data repo is always `invoices/YYYY/<number>.pdf`, which is what `invoice open` and `invoice send` use, so leave those names alone.
 Finalizing requires a successful pull when the data repo has a remote, so the next number is always the real next number.
 
@@ -454,7 +453,7 @@ Set `JIMTIME_TZ` to any IANA name to choose it; it defaults to `America/Los_Ange
 | `approve` | Approve unapproved entries, the human gate before billing |
 | `unapprove` | Set matching entries back to unapproved |
 | `report` | Export a markdown time report |
-| `invoice` | Draft, finalize, send, list, open and void invoices |
+| `invoice` | Draft, finalize, send, list, open, void and mark paid invoices; import Harvest's invoicing history |
 | `harvest` | Optional: query Harvest, dry-run or push approved entries |
 | `cloud` | Optional: log in to Dropbox/Google Drive and upload invoice PDFs |
 | `config` | Create, migrate and check the config |
