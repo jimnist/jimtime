@@ -4,12 +4,13 @@
 [![Release](https://img.shields.io/github/v/release/jimnist/jimtime?include_prereleases&sort=semver)](https://github.com/jimnist/jimtime/releases)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Track billable time per git repo, review and approve it, then invoice it: a PDF from your own HTML template, emailed to the client after you have looked at it.
-Pushing to [Harvest](https://www.getharvest.com/) is there too, optional and off by default.
+jimtime tracks billable time by git repo and turns it into invoices.
 
-Run `jimtime` from inside any git repo.
-It maps that repo to a client and project, and appends the entry to a central, human-readable store that is its own private git repo, committed and pushed on every change.
-Nothing is billed until you approve it, and no invoice is sent until you have seen it.
+Run it from the repo you're working in and it already knows which client and project the time belongs to.
+Log time as you go, or let Claude Code log it at the end of a session with the `/jimtime` skill.
+When it's time to bill, review and approve the entries, render a PDF invoice from your own HTML template, and send it however you like: jimtime can email it, or you can.
+Your time and invoices live in plain JSON files in a private git repo you own.
+[Harvest](https://www.getharvest.com/) is supported but optional.
 
 ```sh
 $ cd ~/code/client/acme
