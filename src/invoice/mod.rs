@@ -314,7 +314,11 @@ impl Invoice {
 
     /// `paid 2026-08-01`, `overdue since 2026-10-17`, `open, due 2026-10-17`,
     /// `not sent`, or `void`, as of `today`.
-    pub fn payment_status(&self, today: NaiveDate) -> String {
+    ///
+    /// `tracks_sends` is whether jimtime emails invoices. When it does not,
+    /// you send them yourself and it cannot know whether you have, so an
+    /// unpaid invoice is just open rather than "not sent".
+    pub fn payment_status(&self, today: NaiveDate, tracks_sends: bool) -> String {
         if self.status == Status::Void {
             return "void".into();
         }
@@ -324,7 +328,7 @@ impl Invoice {
         let overdue = NaiveDate::parse_from_str(&self.due_date, "%Y-%m-%d")
             .map(|due| due < today)
             .unwrap_or(false);
-        match (overdue, self.sent.is_empty()) {
+        match (overdue, tracks_sends && self.sent.is_empty()) {
             (true, _) => format!("OVERDUE since {}", self.due_date),
             (false, true) => format!("not sent, due {}", self.due_date),
             (false, false) => format!("open, due {}", self.due_date),
@@ -696,7 +700,7 @@ mod tests {
         i.status = Status::Finalized;
         i.due_date = "2026-10-17".into();
         assert_eq!(
-            i.payment_status(d("2026-10-01")),
+            i.payment_status(d("2026-10-01"), true),
             "not sent, due 2026-10-17"
         );
         i.sent.push(SendEvent {
@@ -705,17 +709,37 @@ mod tests {
             cc: vec![],
             bcc: vec![],
         });
-        assert_eq!(i.payment_status(d("2026-10-17")), "open, due 2026-10-17");
         assert_eq!(
-            i.payment_status(d("2026-10-18")),
+            i.payment_status(d("2026-10-17"), true),
+            "open, due 2026-10-17"
+        );
+        assert_eq!(
+            i.payment_status(d("2026-10-18"), true),
             "OVERDUE since 2026-10-17"
         );
         assert!(i.is_outstanding());
         i.paid_date = Some("2026-10-20".into());
-        assert_eq!(i.payment_status(d("2026-11-01")), "paid 2026-10-20");
+        assert_eq!(i.payment_status(d("2026-11-01"), true), "paid 2026-10-20");
         assert!(!i.is_outstanding());
         i.status = Status::Void;
-        assert_eq!(i.payment_status(d("2026-11-01")), "void");
+        assert_eq!(i.payment_status(d("2026-11-01"), true), "void");
+    }
+
+    #[test]
+    fn invoices_you_send_yourself_are_open_not_unsent() {
+        // Without [email], jimtime cannot know whether you sent it.
+        let d = |s: &str| NaiveDate::parse_from_str(s, "%Y-%m-%d").unwrap();
+        let mut i = inv("007", 2026, 7);
+        i.status = Status::Finalized;
+        i.due_date = "2026-12-09".into();
+        assert_eq!(
+            i.payment_status(d("2026-11-09"), false),
+            "open, due 2026-12-09"
+        );
+        assert_eq!(
+            i.payment_status(d("2026-12-10"), false),
+            "OVERDUE since 2026-12-09"
+        );
     }
 
     #[test]
