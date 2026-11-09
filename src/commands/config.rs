@@ -579,6 +579,7 @@ name = ""
 # here and set numbering = true in harvest.toml:
 # number_format = "{seq:03}"
 
+# Email invoices from jimtime; leave [email] out to send them yourself.
 # [email]
 # host = "smtp.fastmail.com"
 # port = 465
@@ -619,6 +620,7 @@ name = "Your Name"
 # file_name = "Invoice {number}.pdf"  # attachment name; also {year}, {client}, {issue_date}
 # template = "templates/invoice.html"   # relative to this config dir
 
+# Email invoices from jimtime; leave [email] out to send them yourself.
 # [email]
 # host = "smtp.fastmail.com"
 # port = 465

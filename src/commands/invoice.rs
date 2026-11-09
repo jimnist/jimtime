@@ -209,7 +209,20 @@ fn shell_quote(s: &str) -> String {
     }
 }
 
-fn summary(config: &Config, i: &inv::Invoice, send: bool) {
+/// Why jimtime will not email an invoice, if it will not: `--no-send`, or no
+/// `[email]` section (you send invoices yourself). `None` means it emails.
+fn not_emailing(config: &Config, no_send: bool) -> Option<&'static str> {
+    if no_send {
+        Some("--no-send")
+    } else if config.email.is_none() {
+        Some("no [email] configured")
+    } else {
+        None
+    }
+}
+
+/// Print the invoice summary; `not_emailing` says why recipients are moot.
+fn summary(config: &Config, i: &inv::Invoice, not_emailing: Option<&str>) {
     outln!("Invoice {} for {} ({})", i.number, i.client.name, i.client_key);
     outln!("  Period:      {} to {}", i.period_from, i.period_to);
     outln!("  Issued/due:  {} / {}", i.issue_date, i.due_date);
@@ -225,15 +238,18 @@ fn summary(config: &Config, i: &inv::Invoice, send: bool) {
         fmt_amount(i.total),
         i.currency
     );
-    if send {
-        let r = i.recipients(config);
-        outln!("  Email to:    {}", list_or_none(&r.to));
-        if !r.cc.is_empty() {
-            outln!("  Cc:          {}", r.cc.join(", "));
+    match not_emailing {
+        None => {
+            let r = i.recipients(config);
+            outln!("  Email to:    {}", list_or_none(&r.to));
+            if !r.cc.is_empty() {
+                outln!("  Cc:          {}", r.cc.join(", "));
+            }
+            if !r.bcc.is_empty() {
+                outln!("  Bcc:         {}", r.bcc.join(", "));
+            }
         }
-        if !r.bcc.is_empty() {
-            outln!("  Bcc:         {}", r.bcc.join(", "));
-        }
+        Some(why) => outln!("  Email:       you send it ({why})"),
     }
 }
 
@@ -272,7 +288,7 @@ async fn draft(scope: &Scope, no_open: bool) -> Result<()> {
     let out = paths::drafts_dir()?.join(format!("{}-draft.pdf", scope.client));
     render::pdf(&config, &i, template.as_deref(), true, &out).await?;
 
-    summary(&config, &i, true);
+    summary(&config, &i, not_emailing(&config, false));
     let fp = i.fingerprint(&config);
     outln!("  Fingerprint: {fp}");
     // Informational: finalize pulls first and computes it again.
@@ -306,10 +322,13 @@ async fn draft(scope: &Scope, no_open: bool) -> Result<()> {
 async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: bool) -> Result<()> {
     let config = Config::load()?;
     // Everything that could stop the send is checked before anything is written.
-    let mailer = if no_send {
-        None
-    } else {
-        Some(Mailer::from_config(&config)?)
+    // With no [email] section the invoice is yours to send, like --no-send; an
+    // [email] section that cannot work (no password) is still an error, since
+    // it says you meant jimtime to send it.
+    let skip_email = not_emailing(&config, no_send);
+    let mailer = match skip_email {
+        Some(_) => None,
+        None => Some(Mailer::from_config(&config)?),
     };
     let interactive = std::io::stdin().is_terminal() && std::io::stdout().is_terminal();
     if confirm.is_none() && !interactive {
@@ -341,9 +360,9 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
             "what would be billed has changed since the draft (fingerprint {c}, now {fp}).\n\
              Run `jimtime invoice draft` again and check it."
         ),
-        Some(_) => summary(&config, &i, mailer.is_some()),
+        Some(_) => summary(&config, &i, skip_email),
         None => {
-            summary(&config, &i, mailer.is_some());
+            summary(&config, &i, skip_email);
             outln!("\nPreview: {}", staged.display());
             if !no_open {
                 render::open(&staged)?;
@@ -351,7 +370,7 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
             let action = if mailer.is_some() {
                 format!("Finalize invoice {number} and email it")
             } else {
-                format!("Finalize invoice {number} (without emailing)")
+                format!("Finalize invoice {number} (you send it)")
             };
             if !ask(&format!("\n{action}? [y/N] "))? {
                 let _ = std::fs::remove_file(&staged);
@@ -392,6 +411,13 @@ async fn finalize(scope: &Scope, confirm: Option<&str>, no_send: bool, no_open: 
                 )));
             }
         }
+    } else {
+        outln!(
+            "Not emailed ({}). Send it yourself, attached as {:?}.\n\
+             When it's paid: jimtime invoice paid {number}",
+            skip_email.unwrap_or("not emailing"),
+            i.pdf_name(&config)?
+        );
     }
 
     upload(&config, &mut i, &pdf).await?;
@@ -489,6 +515,11 @@ fn list(client: Option<&str>) -> Result<()> {
         "NUMBER", "ISSUED", "CLIENT", "TOTAL"
     );
     let today = timeutil::today_naive()?;
+    // Listing works without a valid config; it only decides "not sent" vs "open".
+    let tracks_sends = Config::load_optional()
+        .ok()
+        .flatten()
+        .is_some_and(|c| c.email.is_some());
     let mut outstanding: std::collections::BTreeMap<&str, f64> = Default::default();
     for i in &all {
         let mut notes = Vec::new();
@@ -509,7 +540,7 @@ fn list(client: Option<&str>) -> Result<()> {
             i.issue_date,
             truncate(&i.client.name, 24),
             format!("{} {}", fmt_amount(i.total), i.currency),
-            i.payment_status(today),
+            i.payment_status(today, tracks_sends),
         );
         if i.is_outstanding() {
             *outstanding.entry(&i.currency).or_default() += i.total;
@@ -625,4 +656,36 @@ fn move_file(from: &Path, to: &Path) -> Result<()> {
     std::fs::rename(from, to)
         .or_else(|_| std::fs::copy(from, to).map(|_| ()).and_then(|_| std::fs::remove_file(from)))
         .with_context(|| format!("moving the PDF to {}", to.display()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const BASE: &str = r#"
+        [tasks.dev]
+        name = "Dev"
+        [clients.acme]
+        name = "Acme"
+        [clients.acme.projects.web]
+        name = "Web"
+        default_task = "dev"
+    "#;
+
+    #[test]
+    fn without_an_email_section_you_send_invoices_yourself() {
+        let c = Config::parse(BASE).unwrap();
+        assert_eq!(not_emailing(&c, false), Some("no [email] configured"));
+        assert_eq!(not_emailing(&c, true), Some("--no-send"));
+    }
+
+    #[test]
+    fn with_an_email_section_jimtime_sends_unless_told_not_to() {
+        let text = format!(
+            "{BASE}\n[email]\nhost = \"smtp.example.com\"\nusername = \"me\"\nfrom = \"me@example.com\"\n"
+        );
+        let c = Config::parse(&text).unwrap();
+        assert_eq!(not_emailing(&c, false), None);
+        assert_eq!(not_emailing(&c, true), Some("--no-send"));
+    }
 }

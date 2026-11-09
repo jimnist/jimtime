@@ -72,8 +72,8 @@ Add what you use to your shell profile:
 # If unset, falls back to the XDG data dir (~/.local/share/jimtime).
 export JIMTIME_HOME="$HOME/code/jimtime-data"
 
-# Emailing invoices: your SMTP (app) password.
-export JIMTIME_SMTP_PASSWORD="..."
+# Only if jimtime emails your invoices ([email] in the config): your SMTP (app) password.
+# export JIMTIME_SMTP_PASSWORD="..."
 
 # Optional. The timezone billing days are anchored to, as an IANA name.
 # Defaults to America/Los_Angeles.
@@ -143,6 +143,7 @@ path = "~/code/acme/website"
 client = "acme"
 project = "website"
 
+# Optional: leave [email] out and you send invoices yourself.
 [email]
 host = "smtp.fastmail.com"
 port = 465               # 587 with security = "starttls"
@@ -282,7 +283,8 @@ Uploaded to dropbox: /Invoices/Invoice 2026-004.pdf
 
 On approval it assigns the next number, writes the invoice record (`invoices/YYYY/<number>.json`, a full snapshot) and the PDF, locks each entry to that number, commits and pushes, emails the PDF, and uploads it to any configured cloud folder.
 If the email or an upload fails, the invoice stays issued and the error names the retry: `invoice send <number>` or `cloud upload <number>`.
-`--no-send` finalizes without emailing.
+Without an `[email]` section jimtime doesn't email at all: finalize issues the invoice, tells you the file name to attach it as, and you send it yourself.
+With one, `--no-send` skips the email for a single invoice.
 An invoice goes to the client's `email_to`, Cc'd to its `email_cc` and to `[email] cc`, and Bcc'd to `[email] bcc`; add a one-off Cc with `--cc <address>` on `draft` and `finalize` (it is part of the fingerprint, so what you approved is who gets it).
 An address listed in more than one place gets the email once, in the most visible field.
 
