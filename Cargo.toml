@@ -1,9 +1,9 @@
 [package]
 name = "jimtime"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 authors = ["jimnist <jim@jimnist.com>"]
-description = "Track billable time per git repo and push approved entries to Harvest"
+description = "Track billable time per git repo, invoice it from HTML templates, and optionally push it to Harvest"
 readme = "README.md"
 license = "MIT"
 repository = "https://github.com/jimnist/jimtime"
